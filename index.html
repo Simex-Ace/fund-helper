@@ -152,6 +152,10 @@ body{font-family:-apple-system,PingFang SC,Helvetica Neue,sans-serif;background:
 .detail-stat{padding:8px;border-radius:8px;background:var(--bg)}
 .detail-stat-label{font-size:11px;color:var(--text-secondary)}
 .detail-stat-value{font-size:14px;font-weight:600;margin-top:2px}
+.detail-perf{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-top:8px}
+.detail-perf-item{padding:10px;border-radius:10px;background:var(--bg);text-align:center}
+.detail-perf-item .perf-label{font-size:11px;color:var(--text-secondary);margin-bottom:4px}
+.detail-perf-item .perf-value{font-size:16px;font-weight:700}
 .watch-search{margin-bottom:12px;position:relative}
 .watch-search input{width:100%;padding:10px 14px;border-radius:12px;border:1px solid var(--border);background:var(--bg);font-size:14px;outline:none;transition:border .2s}
 .watch-search input:focus{border-color:var(--primary)}
@@ -357,14 +361,17 @@ body{font-family:-apple-system,PingFang SC,Helvetica Neue,sans-serif;background:
         <div><span class="detail-name" id="detName"></span><span class="detail-code" id="detCode"></span></div>
         <div><div class="detail-price" id="detPrice"></div><div class="detail-chg" id="detChg"></div></div>
       </div>
-      <div class="detail-period">
-        <button class="active" data-period="30">1月</button>
-        <button data-period="90">3月</button>
-        <button data-period="180">6月</button>
-        <button data-period="365">1年</button>
+      <div style="font-size:12px;color:var(--text-secondary);margin-bottom:8px">多日涨跌幅</div>
+      <div class="detail-perf" id="detPerf">
+        <div class="detail-perf-item"><div class="perf-label">今日</div><div class="perf-value" id="perf1d">--</div></div>
+        <div class="detail-perf-item"><div class="perf-label">昨日</div><div class="perf-value" id="perfYesterday">--</div></div>
+        <div class="detail-perf-item"><div class="perf-label">近5日</div><div class="perf-value" id="perf5d">--</div></div>
+        <div class="detail-perf-item"><div class="perf-label">近10日</div><div class="perf-value" id="perf10d">--</div></div>
+        <div class="detail-perf-item"><div class="perf-label">近20日</div><div class="perf-value" id="perf20d">--</div></div>
+        <div class="detail-perf-item"><div class="perf-label">近60日</div><div class="perf-value" id="perf60d">--</div></div>
+        <div class="detail-perf-item"><div class="perf-label">年初至今</div><div class="perf-value" id="perfYtd">--</div></div>
       </div>
-      <div class="detail-chart-wrap"><canvas id="klineCanvas"></canvas></div>
-      <div class="detail-stats" id="detStats"></div>
+      <div style="margin-top:8px"><div id="perfChart" style="height:120px;width:100%"></div></div>
     </div>
   </div>
 </div>
@@ -770,6 +777,11 @@ function doSearch(q) {
   });
 }
 
+// 全局变量
+let longPressTimer = null;
+let currentDetailCode = '';
+let currentDetailPeriod = 30;
+
 // ============================================================
 // 初始化 & 事件绑定
 // ============================================================
@@ -937,7 +949,6 @@ document.addEventListener('DOMContentLoaded', function() {
   });
 
   // === 长按删除自选 ===
-  let longPressTimer = null;
   document.getElementById('watchlistContent').addEventListener('touchstart', e => {
     const item = e.target.closest('.watch-item');
     if (!item) return;
@@ -966,9 +977,6 @@ document.addEventListener('DOMContentLoaded', function() {
 });
 
 // === 自选点击查看详情 ===
-let currentDetailCode = '';
-let currentDetailPeriod = 30;
-
 document.getElementById('watchlistContent').addEventListener('click', function(e) {
   if (longPressTimer) return;
   const item = e.target.closest('.watch-item');
@@ -990,137 +998,143 @@ function openDetail(w) {
   document.getElementById('detChg').textContent = (isUp?'+':'') + w.chg.toFixed(2) + '%';
   document.getElementById('detChg').className = 'detail-chg ' + (isUp?'up':'down');
   document.getElementById('detailModal').classList.add('show');
-  // 拉K线
-  fetchKline(w.code, currentDetailPeriod);
+  // 拉多日涨跌数据
+  fetchMultiDayPerf(w.code);
+}
+
+function fetchMultiDayPerf(code) {
+  // 重置显示
+  ['perf1d','perfYesterday','perf5d','perf10d','perf20d','perf60d','perfYtd'].forEach(id => {
+    const el = document.getElementById(id);
+    if (el) { el.textContent = '...'; el.className = 'perf-value'; }
+  });
+  const chartContainer = document.getElementById('perfChart');
+  if (chartContainer) chartContainer.innerHTML = '';
+
+  // 基金不拉多日数据
+  if (code.length === 6 && !code.startsWith('sh') && !code.startsWith('sz') && !code.startsWith('hk') && !code.startsWith('us')) {
+    ['perf1d','perfYesterday','perf5d','perf10d','perf20d','perf60d','perfYtd'].forEach(id => {
+      const el = document.getElementById(id);
+      if (el) { el.textContent = '--'; el.className = 'perf-value'; }
+    });
+    return;
+  }
+
+  const script = document.createElement('script');
+  const key = 'v_' + code.replace(/\./g,'_');
+  let loaded = false;
+
+  script.onload = () => {
+    if (loaded) return;
+    loaded = true;
+    const raw = window[key];
+    delete window[key];
+    try {
+      if (typeof raw === 'string') {
+        // 清洗数据: 去掉 v_xxx=" 前缀 和 " 后缀
+        let cleaned = raw;
+        const m = raw.match(/^v_\w+="(.*)"$/);
+        if (m) cleaned = m[1];
+        const parts = cleaned.split('~');
+        const price = parseFloat(parts[3]) || 0;
+        const prevClose = parseFloat(parts[4]) || 0;
+
+        if (parts.length > 40) {
+          // 第32字段是涨跌额，需要从price/prevClose算百分比
+          const todayChg = price && prevClose ? ((price - prevClose) / prevClose * 100) : 0;
+          // 第33字段可能是涨跌幅%，校验使用
+          const field33 = parseFloat(parts[33]);
+          const todayChgFinal = (field33 && Math.abs(field33) < 30) ? field33 : todayChg;
+          // 第34字段可能是昨日涨跌幅%（部分股票有）
+          const field34 = parseFloat(parts[34]);
+          const yesterdayChg = (field34 && Math.abs(field34) < 30) ? field34 : null;
+
+          const perfData = {
+            'perf1d': todayChgFinal,
+            'perfYesterday': yesterdayChg,
+            'perf5d': parseFloat(parts[63]) || null,
+            'perf10d': parseFloat(parts[64]) || null,
+            'perf20d': parseFloat(parts[65]) || null,
+            'perf60d': parseFloat(parts[66]) || null,
+            'perfYtd': parseFloat(parts[67]) || null
+          };
+
+          Object.entries(perfData).forEach(([id, val]) => {
+            const el = document.getElementById(id);
+            if (el && val !== null && !isNaN(val)) {
+              el.textContent = (val > 0 ? '+' : '') + val.toFixed(2) + '%';
+              el.className = 'perf-value ' + (val >= 0 ? 'up' : 'down');
+            } else if (el) {
+              el.textContent = '--';
+              el.className = 'perf-value';
+            }
+          });
+
+          renderPerfChart(perfData);
+        }
+      }
+    } catch(e) {
+      // 解析失败，显示--
+      ['perf1d','perfYesterday','perf5d','perf10d','perf20d','perf60d','perfYtd'].forEach(id => {
+        const el = document.getElementById(id);
+        if (el) { el.textContent = '--'; el.className = 'perf-value'; }
+      });
+    }
+    if (script.parentNode) script.parentNode.removeChild(script);
+  };
+
+  script.onerror = () => {
+    ['perf1d','perfYesterday','perf5d','perf10d','perf20d','perf60d','perfYtd'].forEach(id => {
+      const el = document.getElementById(id);
+      if (el) { el.textContent = '--'; el.className = 'perf-value'; }
+    });
+  };
+
+  script.src = `https://web.sqt.gtimg.cn/q=${code}&t=${Date.now()}`;
+  document.head.appendChild(script);
+}
+
+function renderPerfChart(perfData) {
+  const container = document.getElementById('perfChart');
+  if (!container) return;
+  // 提取有数值的项（去掉昨日，昨日单独显示）
+  const items = [
+    { label:'今日', key:'perf1d' },
+    { label:'近5日', key:'perf5d' },
+    { label:'近10日', key:'perf10d' },
+    { label:'近20日', key:'perf20d' },
+    { label:'近60日', key:'perf60d' },
+    { label:'年初至今', key:'perfYtd' }
+  ];
+  const values = items.map(i => ({ label:i.label, val:perfData[i.key] })).filter(v => v.val !== null && !isNaN(v.val));
+  if (!values.length) { container.innerHTML = '<div style="text-align:center;color:var(--text-tertiary);font-size:12px;padding:20px">暂无多日数据</div>'; return; }
+
+  const maxAbs = Math.max(...values.map(v => Math.abs(v.val)), 1);
+  const barH = 14;
+  const gap = 6;
+  const h = values.length * (barH + gap) + 10;
+  const chartW = container.clientWidth || 300;
+
+  const svg = [`<svg width="${chartW}" height="${h}" viewBox="0 0 ${chartW} ${h}" style="display:block;font-family:inherit">`];
+  values.forEach((v, i) => {
+    const y = i * (barH + gap);
+    const pct = Math.abs(v.val) / maxAbs;
+    const barW = Math.max(pct * (chartW * 0.55), 4);
+    const isUp = v.val >= 0;
+    const color = isUp ? '#FF3B30' : '#34C759';
+    const x0 = chartW * 0.38;
+    const barX = isUp ? x0 : x0 - barW;
+
+    svg.push(`<text x="0" y="${y + barH - 2}" font-size="11" fill="#8E94A0">${v.label}</text>`);
+    svg.push(`<rect x="${barX}" y="${y}" width="${barW}" height="${barH}" rx="2" fill="${color}" opacity="0.8"/>`);
+    svg.push(`<text x="${isUp ? x0 + barW + 4 : x0 - barW - 4}" y="${y + barH - 2}" font-size="11" fill="${color}" text-anchor="${isUp ? 'start' : 'end'}" font-weight="600">${v.val > 0 ? '+' : ''}${v.val.toFixed(2)}%</text>`);
+  });
+  svg.push('</svg>');
+  container.innerHTML = svg.join('');
 }
 
 document.getElementById('detailClose').addEventListener('click', () => document.getElementById('detailModal').classList.remove('show'));
 document.getElementById('detailModal').addEventListener('click', function(e) { if (e.target === this) this.classList.remove('show'); });
-
-// 周期切换
-document.querySelectorAll('.detail-period button').forEach(b => {
-  b.addEventListener('click', function() {
-    document.querySelectorAll('.detail-period button').forEach(x => x.classList.remove('active'));
-    this.classList.add('active');
-    currentDetailPeriod = parseInt(this.dataset.period);
-    fetchKline(currentDetailCode, currentDetailPeriod);
-  });
-});
-
-// 获取K线数据（东方财富 API）
-function fetchKline(code, days) {
-  // 转换代码到东财 secid 格式
-  let secid = '';
-  if (code.startsWith('sh')) secid = '1.' + code.slice(2);
-  else if (code.startsWith('sz')) secid = '0.' + code.slice(2);
-  else if (code.startsWith('hk')) secid = '2.' + code.slice(2);
-  else { showChartError(); return; }
-  const url = `https://push2.eastmoney.com/api/qt/stock/kline/get?secid=${secid}&fields1=f1,f2,f3&fields2=f51,f52,f53,f54,f55,f56,f57&klt=101&fqt=1&end=20500101&lmt=${days}`;
-  // 先显示加载状态
-  const canvas = document.getElementById('klineCanvas');
-  const ctx = canvas.getContext('2d');
-  canvas.width = canvas.clientWidth * 2;
-  canvas.height = canvas.clientHeight * 2;
-  ctx.scale(2, 2);
-  ctx.clearRect(0, 0, canvas.width, canvas.height);
-  ctx.fillStyle = '#F2F4F8';
-  ctx.fillRect(0, 0, canvas.width, canvas.height);
-  ctx.fillStyle = '#8E94A0';
-  ctx.font = '14px sans-serif';
-  ctx.textAlign = 'center';
-  ctx.fillText('加载中...', canvas.width/2/2, canvas.height/2/2);
-  document.getElementById('detStats').innerHTML = '';
-  // 请求数据
-  fetch(url).then(r => r.json()).then(d => {
-    if (!d || !d.data || !d.data.klines) { showChartError(); return; }
-    const klines = d.data.klines.map(k => { const p = k.split(','); return { date: p[0], open: +p[1], close: +p[2], high: +p[3], low: +p[4], vol: +p[5], amount: +p[6] }; });
-    drawChart(klines);
-    // 统计数据
-    const prices = klines.map(k => k.close);
-    const max = Math.max(...prices);
-    const min = Math.min(...prices);
-    const avg = (prices.reduce((a,b)=>a+b,0) / prices.length).toFixed(2);
-    const first = prices[0];
-    const last = prices[prices.length-1];
-    const totalChg = first ? ((last-first)/first*100).toFixed(2) : 0;
-    document.getElementById('detStats').innerHTML = `
-      <div class="detail-stat"><div class="detail-stat-label">最高</div><div class="detail-stat-value up">${max.toFixed(2)}</div></div>
-      <div class="detail-stat"><div class="detail-stat-label">最低</div><div class="detail-stat-value down">${min.toFixed(2)}</div></div>
-      <div class="detail-stat"><div class="detail-stat-label">均价</div><div class="detail-stat-value">${avg}</div></div>
-      <div class="detail-stat"><div class="detail-stat-label">区间涨幅</div><div class="detail-stat-value ${totalChg>=0?'up':'down'}">${totalChg}%</div></div>`;
-  }).catch(() => showChartError());
-}
-
-function drawChart(klines) {
-  const canvas = document.getElementById('klineCanvas');
-  const ctx = canvas.getContext('2d');
-  const W = canvas.width / 2, H = canvas.height / 2;
-  ctx.clearRect(0, 0, W, H);
-  const pad = { top: 20, bottom: 25, left: 10, right: 10 };
-  const chartW = W - pad.left - pad.right;
-  const chartH = H - pad.top - pad.bottom;
-  const prices = klines.map(k => k.close);
-  const max = Math.max(...prices), min = Math.min(...prices);
-  const range = max - min || 1;
-  // 背景
-  ctx.fillStyle = '#FFFFFF';
-  ctx.fillRect(0, 0, W, H);
-  // 网格线
-  ctx.strokeStyle = '#EBEDF0';
-  ctx.lineWidth = 0.5;
-  for (let i = 0; i <= 4; i++) {
-    const y = pad.top + chartH * i / 4;
-    ctx.beginPath(); ctx.moveTo(pad.left, y); ctx.lineTo(W - pad.right, y); ctx.stroke();
-  }
-  // 折线
-  const step = chartW / (klines.length - 1 || 1);
-  ctx.beginPath();
-  for (let i = 0; i < klines.length; i++) {
-    const x = pad.left + i * step;
-    const y = pad.top + chartH * (1 - (prices[i] - min) / range);
-    if (i === 0) ctx.moveTo(x, y); else ctx.lineTo(x, y);
-  }
-  ctx.strokeStyle = '#4F7CFF';
-  ctx.lineWidth = 2;
-  ctx.stroke();
-  // 填充渐变
-  ctx.lineTo(pad.left + (klines.length - 1) * step, pad.top + chartH);
-  ctx.lineTo(pad.left, pad.top + chartH);
-  ctx.closePath();
-  const grad = ctx.createLinearGradient(0, pad.top, 0, pad.top + chartH);
-  grad.addColorStop(0, 'rgba(79,124,255,0.15)');
-  grad.addColorStop(1, 'rgba(79,124,255,0.01)');
-  ctx.fillStyle = grad;
-  ctx.fill();
-  // 价格标签
-  ctx.fillStyle = '#8E94A0';
-  ctx.font = '10px sans-serif';
-  ctx.textAlign = 'right';
-  for (let i = 0; i <= 4; i++) {
-    const val = max - range * i / 4;
-    const y = pad.top + chartH * i / 4 - 2;
-    ctx.fillText(val.toFixed(2), W - pad.right, y);
-  }
-  // 日期标签
-  ctx.textAlign = 'center';
-  const stepDates = Math.max(1, Math.floor(klines.length / 5));
-  for (let i = 0; i < klines.length; i += stepDates) {
-    const x = pad.left + i * step;
-    const d = klines[i].date;
-    ctx.fillText(d.slice(5), x, H - 3);
-  }
-}
-
-function showChartError() {
-  const canvas = document.getElementById('klineCanvas');
-  const ctx = canvas.getContext('2d');
-  ctx.clearRect(0, 0, canvas.width/2, canvas.height/2);
-  ctx.fillStyle = '#8E94A0';
-  ctx.font = '14px sans-serif';
-  ctx.textAlign = 'center';
-  ctx.fillText('暂无K线数据', canvas.width/2/2, canvas.height/2/2);
-  document.getElementById('detStats').innerHTML = '';
-}
 
 // === 下拉刷新（Pull to Refresh）===
 let pullState = { startY: 0, dy: 0, pulling: false, canPull: false };

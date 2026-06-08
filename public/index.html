@@ -667,38 +667,50 @@ function renderWatchlist(filter) {
 
 // 搜索添加 — 实时调用腾讯搜索 API
 const searchCache = {};
+let searchSeq = 0;
 
 function doSearch(q) {
   if (!q.trim()) return Promise.resolve([]);
-  // 先从缓存查
   if (searchCache[q]) return Promise.resolve(searchCache[q]);
 
   return new Promise(resolve => {
-    const cb = 'searchCB_' + Date.now();
-    window[cb] = function(data) {
-      if (data && Array.isArray(data)) {
-        const results = data.filter(d => d && d.code).map(d => {
-          const code = d.code || '';
-          let market = 'ashare';
-          if (code.startsWith('hk')) market = 'hk';
-          else if (code.startsWith('us') || /^[A-Z]{1,5}$/.test(code)) market = 'us';
-          let type = 'stock';
-          const name = d.name || '';
-          if (name.includes('ETF') || name.includes('ETN')) type = 'etf';
-          else if (name.includes('基金') || name.includes('精选') || name.includes('混合')) type = 'fund';
-          return { name, code, price: 0, chg: 0, type, market };
-        }).slice(0, 10);
-        searchCache[q] = results;
-        resolve(results);
-        return;
-      }
-      resolve([]);
-    };
+    searchSeq++;
+    const seq = searchSeq;
+    // 先清理上一次的 v_hint
+    delete window.v_hint;
     const script = document.createElement('script');
-    script.src = `https://smartbox.gtimg.cn/s3/?v=2&q=${encodeURIComponent(q)}&t=all&callback=${cb}`;
-    script.onerror = () => { delete window[cb]; resolve([]); };
+    script.src = `https://smartbox.gtimg.cn/s3/?v=2&q=${encodeURIComponent(q)}&t=all&_=${Date.now()}`;
+    script.onload = () => {
+      if (seq !== searchSeq) return; // 旧请求跳过
+      const raw = window.v_hint;
+      delete window.v_hint;
+      if (!raw) { resolve([]); return; }
+      // 格式: "sh~688256~寒武纪~hwj~GP-A-KCB^us~bidu~百度~bd~GP"
+      const items = raw.split('^');
+      const results = [];
+      const seen = new Set();
+      items.forEach(s => {
+        const parts = s.split('~');
+        if (parts.length < 3) return;
+        const code = parts[1] || '';
+        const name = parts[2] || '';
+        if (!code || !name || seen.has(code)) return;
+        seen.add(code);
+        let market = 'ashare';
+        if (code.startsWith('hk') || code.startsWith('0')) market = 'hk';
+        else if (code.startsWith('us') || /^[A-Z]{2,5}$/.test(code.split('.')[0])) market = 'us';
+        let type = 'stock';
+        const t = (parts[4]||'');
+        if (t.includes('ETF') || t.includes('ETN') || name.includes('ETF')) type = 'etf';
+        else if (t.includes('QZ') || name.includes('基金') || name.includes('精选') || name.includes('混合')) type = 'fund';
+        results.push({ name, code, price: 0, chg: 0, type, market });
+      });
+      searchCache[q] = results;
+      resolve(results);
+    };
+    script.onerror = () => { resolve([]); };
     document.head.appendChild(script);
-    setTimeout(() => { if (window[cb]) { delete window[cb]; resolve([]); } }, 5000);
+    setTimeout(() => { if (seq === searchSeq) resolve([]); }, 5000);
   });
 }
 

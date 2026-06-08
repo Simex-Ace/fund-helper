@@ -1055,19 +1055,16 @@ function showSearchResults(results) {
 }
 
 function addToWatch(code) {
-  // 从搜索缓存找
   let item = null;
   for (const key in searchCache) {
     item = searchCache[key].find(i => i.code === code);
     if (item) break;
   }
-  // 如果缓存没有，从代码推断
   if (!item) {
     let market = 'ashare';
     if (code.startsWith('hk')) market = 'hk';
     else if (code.startsWith('us') || /^[A-Z]{1,5}$/.test(code)) market = 'us';
-    let type = 'stock';
-    item = { name: code, code, price: 0, chg: 0, type, market };
+    item = { name: code, code, price: 0, chg: 0, type: 'stock', market };
   }
   let wl = getWatchlist();
   if (wl.some(w => w.code === code)) return showToast('已在自选');
@@ -1075,6 +1072,26 @@ function addToWatch(code) {
   saveWatchlist(wl);
   renderWatchlist(document.querySelector('.watchlist-tab.active').dataset.wt);
   showToast('添加成功 ✓');
+  // 立即拉一次实时价格
+  const s = document.createElement('script');
+  s.src = `https://web.sqt.gtimg.cn/q=${code}&t=${Date.now()}`;
+  s.onload = () => {
+    const key = 'v_' + code.replace(/\./g,'_');
+    if (window[key] && typeof window[key]==='string') {
+      const p = window[key].replace(/^v_\w+="/,'').replace(/"$/,'').split('~');
+      if (p.length>3) {
+        const price = parseFloat(p[3]) || 0;
+        const prev = parseFloat(p[4]) || price;
+        const chg = price&&prev ? ((price-prev)/prev*100) : 0;
+        let w = getWatchlist();
+        const f = w.find(x => x.code === code);
+        if (f) { f.price = price; f.chg = chg; saveWatchlist(w); renderWatchlist(document.querySelector('.watchlist-tab.active').dataset.wt); }
+      }
+      delete window[key];
+    }
+    if (s.parentNode) s.parentNode.removeChild(s);
+  };
+  document.head.appendChild(s);
 }
 
 function showToast(msg) {

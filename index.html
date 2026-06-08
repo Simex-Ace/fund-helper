@@ -136,6 +136,22 @@ body{font-family:-apple-system,PingFang SC,Helvetica Neue,sans-serif;background:
 .watch-empty{text-align:center;padding:40px 0;color:var(--text-tertiary)}
 .watch-empty .empty-icon{font-size:48px;margin-bottom:12px}
 .watch-empty .empty-text{font-size:14px}
+.watch-item{cursor:pointer}
+/* 详情弹窗 */
+.detail-header{display:flex;justify-content:space-between;align-items:center;margin-bottom:12px}
+.detail-name{font-size:18px;font-weight:700}
+.detail-code{font-size:12px;color:var(--text-secondary);margin-left:6px}
+.detail-price{font-size:28px;font-weight:700}
+.detail-chg{font-size:16px;font-weight:500;margin-top:2px}
+.detail-chart-wrap{width:100%;height:220px;margin:12px 0;position:relative}
+.detail-chart-wrap canvas{width:100%;height:100%;border-radius:8px;background:var(--card)}
+.detail-period{display:flex;gap:6px;margin-bottom:10px}
+.detail-period button{flex:1;padding:5px 0;border-radius:16px;font-size:12px;border:none;cursor:pointer;background:var(--bg);color:var(--text-secondary);font-weight:500}
+.detail-period button.active{background:var(--primary-light);color:var(--primary);font-weight:600}
+.detail-stats{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-top:8px}
+.detail-stat{padding:8px;border-radius:8px;background:var(--bg)}
+.detail-stat-label{font-size:11px;color:var(--text-secondary)}
+.detail-stat-value{font-size:14px;font-weight:600;margin-top:2px}
 .watch-search{margin-bottom:12px;position:relative}
 .watch-search input{width:100%;padding:10px 14px;border-radius:12px;border:1px solid var(--border);background:var(--bg);font-size:14px;outline:none;transition:border .2s}
 .watch-search input:focus{border-color:var(--primary)}
@@ -331,6 +347,27 @@ body{font-family:-apple-system,PingFang SC,Helvetica Neue,sans-serif;background:
   <button class="tab-item" data-page="watchlist"><span class="tab-icon">⭐</span><span class="tab-label">自选</span></button>
   <button class="tab-item" data-page="profile"><span class="tab-icon">👤</span><span class="tab-label">我的</span></button>
 </nav>
+
+<!-- 详情弹窗 -->
+<div class="modal-overlay" id="detailModal">
+  <div class="modal-content" style="padding:20px;padding-top:28px">
+    <button class="modal-close" id="detailClose">✕</button>
+    <div id="detailContent">
+      <div class="detail-header">
+        <div><span class="detail-name" id="detName"></span><span class="detail-code" id="detCode"></span></div>
+        <div><div class="detail-price" id="detPrice"></div><div class="detail-chg" id="detChg"></div></div>
+      </div>
+      <div class="detail-period">
+        <button class="active" data-period="30">1月</button>
+        <button data-period="90">3月</button>
+        <button data-period="180">6月</button>
+        <button data-period="365">1年</button>
+      </div>
+      <div class="detail-chart-wrap"><canvas id="klineCanvas"></canvas></div>
+      <div class="detail-stats" id="detStats"></div>
+    </div>
+  </div>
+</div>
 
 <!-- Modal -->
 <div class="modal-overlay" id="addModal"><div class="modal-content"><button class="modal-close" id="modalClose">✕</button><div class="modal-title">添加自选</div><div id="searchResults"></div></div></div>
@@ -927,6 +964,163 @@ document.addEventListener('DOMContentLoaded', function() {
     this.textContent = levels[(idx + 1) % 3];
   });
 });
+
+// === 自选点击查看详情 ===
+let currentDetailCode = '';
+let currentDetailPeriod = 30;
+
+document.getElementById('watchlistContent').addEventListener('click', function(e) {
+  if (longPressTimer) return;
+  const item = e.target.closest('.watch-item');
+  if (!item) return;
+  const code = item.dataset.code;
+  const wl = getWatchlist();
+  const w = wl.find(x => x.code === code);
+  if (!w) return;
+  currentDetailCode = code;
+  openDetail(w);
+});
+
+function openDetail(w) {
+  document.getElementById('detName').textContent = w.name;
+  document.getElementById('detCode').textContent = w.code;
+  document.getElementById('detPrice').textContent = w.price.toFixed(2);
+  const isUp = w.chg >= 0;
+  document.getElementById('detPrice').className = 'detail-price ' + (isUp?'up':'down');
+  document.getElementById('detChg').textContent = (isUp?'+':'') + w.chg.toFixed(2) + '%';
+  document.getElementById('detChg').className = 'detail-chg ' + (isUp?'up':'down');
+  document.getElementById('detailModal').classList.add('show');
+  // 拉K线
+  fetchKline(w.code, currentDetailPeriod);
+}
+
+document.getElementById('detailClose').addEventListener('click', () => document.getElementById('detailModal').classList.remove('show'));
+document.getElementById('detailModal').addEventListener('click', function(e) { if (e.target === this) this.classList.remove('show'); });
+
+// 周期切换
+document.querySelectorAll('.detail-period button').forEach(b => {
+  b.addEventListener('click', function() {
+    document.querySelectorAll('.detail-period button').forEach(x => x.classList.remove('active'));
+    this.classList.add('active');
+    currentDetailPeriod = parseInt(this.dataset.period);
+    fetchKline(currentDetailCode, currentDetailPeriod);
+  });
+});
+
+// 获取K线数据（东方财富 API）
+function fetchKline(code, days) {
+  // 转换代码到东财 secid 格式
+  let secid = '';
+  if (code.startsWith('sh')) secid = '1.' + code.slice(2);
+  else if (code.startsWith('sz')) secid = '0.' + code.slice(2);
+  else if (code.startsWith('hk')) secid = '2.' + code.slice(2);
+  else { showChartError(); return; }
+  const url = `https://push2.eastmoney.com/api/qt/stock/kline/get?secid=${secid}&fields1=f1,f2,f3&fields2=f51,f52,f53,f54,f55,f56,f57&klt=101&fqt=1&end=20500101&lmt=${days}`;
+  // 先显示加载状态
+  const canvas = document.getElementById('klineCanvas');
+  const ctx = canvas.getContext('2d');
+  canvas.width = canvas.clientWidth * 2;
+  canvas.height = canvas.clientHeight * 2;
+  ctx.scale(2, 2);
+  ctx.clearRect(0, 0, canvas.width, canvas.height);
+  ctx.fillStyle = '#F2F4F8';
+  ctx.fillRect(0, 0, canvas.width, canvas.height);
+  ctx.fillStyle = '#8E94A0';
+  ctx.font = '14px sans-serif';
+  ctx.textAlign = 'center';
+  ctx.fillText('加载中...', canvas.width/2/2, canvas.height/2/2);
+  document.getElementById('detStats').innerHTML = '';
+  // 请求数据
+  fetch(url).then(r => r.json()).then(d => {
+    if (!d || !d.data || !d.data.klines) { showChartError(); return; }
+    const klines = d.data.klines.map(k => { const p = k.split(','); return { date: p[0], open: +p[1], close: +p[2], high: +p[3], low: +p[4], vol: +p[5], amount: +p[6] }; });
+    drawChart(klines);
+    // 统计数据
+    const prices = klines.map(k => k.close);
+    const max = Math.max(...prices);
+    const min = Math.min(...prices);
+    const avg = (prices.reduce((a,b)=>a+b,0) / prices.length).toFixed(2);
+    const first = prices[0];
+    const last = prices[prices.length-1];
+    const totalChg = first ? ((last-first)/first*100).toFixed(2) : 0;
+    document.getElementById('detStats').innerHTML = `
+      <div class="detail-stat"><div class="detail-stat-label">最高</div><div class="detail-stat-value up">${max.toFixed(2)}</div></div>
+      <div class="detail-stat"><div class="detail-stat-label">最低</div><div class="detail-stat-value down">${min.toFixed(2)}</div></div>
+      <div class="detail-stat"><div class="detail-stat-label">均价</div><div class="detail-stat-value">${avg}</div></div>
+      <div class="detail-stat"><div class="detail-stat-label">区间涨幅</div><div class="detail-stat-value ${totalChg>=0?'up':'down'}">${totalChg}%</div></div>`;
+  }).catch(() => showChartError());
+}
+
+function drawChart(klines) {
+  const canvas = document.getElementById('klineCanvas');
+  const ctx = canvas.getContext('2d');
+  const W = canvas.width / 2, H = canvas.height / 2;
+  ctx.clearRect(0, 0, W, H);
+  const pad = { top: 20, bottom: 25, left: 10, right: 10 };
+  const chartW = W - pad.left - pad.right;
+  const chartH = H - pad.top - pad.bottom;
+  const prices = klines.map(k => k.close);
+  const max = Math.max(...prices), min = Math.min(...prices);
+  const range = max - min || 1;
+  // 背景
+  ctx.fillStyle = '#FFFFFF';
+  ctx.fillRect(0, 0, W, H);
+  // 网格线
+  ctx.strokeStyle = '#EBEDF0';
+  ctx.lineWidth = 0.5;
+  for (let i = 0; i <= 4; i++) {
+    const y = pad.top + chartH * i / 4;
+    ctx.beginPath(); ctx.moveTo(pad.left, y); ctx.lineTo(W - pad.right, y); ctx.stroke();
+  }
+  // 折线
+  const step = chartW / (klines.length - 1 || 1);
+  ctx.beginPath();
+  for (let i = 0; i < klines.length; i++) {
+    const x = pad.left + i * step;
+    const y = pad.top + chartH * (1 - (prices[i] - min) / range);
+    if (i === 0) ctx.moveTo(x, y); else ctx.lineTo(x, y);
+  }
+  ctx.strokeStyle = '#4F7CFF';
+  ctx.lineWidth = 2;
+  ctx.stroke();
+  // 填充渐变
+  ctx.lineTo(pad.left + (klines.length - 1) * step, pad.top + chartH);
+  ctx.lineTo(pad.left, pad.top + chartH);
+  ctx.closePath();
+  const grad = ctx.createLinearGradient(0, pad.top, 0, pad.top + chartH);
+  grad.addColorStop(0, 'rgba(79,124,255,0.15)');
+  grad.addColorStop(1, 'rgba(79,124,255,0.01)');
+  ctx.fillStyle = grad;
+  ctx.fill();
+  // 价格标签
+  ctx.fillStyle = '#8E94A0';
+  ctx.font = '10px sans-serif';
+  ctx.textAlign = 'right';
+  for (let i = 0; i <= 4; i++) {
+    const val = max - range * i / 4;
+    const y = pad.top + chartH * i / 4 - 2;
+    ctx.fillText(val.toFixed(2), W - pad.right, y);
+  }
+  // 日期标签
+  ctx.textAlign = 'center';
+  const stepDates = Math.max(1, Math.floor(klines.length / 5));
+  for (let i = 0; i < klines.length; i += stepDates) {
+    const x = pad.left + i * step;
+    const d = klines[i].date;
+    ctx.fillText(d.slice(5), x, H - 3);
+  }
+}
+
+function showChartError() {
+  const canvas = document.getElementById('klineCanvas');
+  const ctx = canvas.getContext('2d');
+  ctx.clearRect(0, 0, canvas.width/2, canvas.height/2);
+  ctx.fillStyle = '#8E94A0';
+  ctx.font = '14px sans-serif';
+  ctx.textAlign = 'center';
+  ctx.fillText('暂无K线数据', canvas.width/2/2, canvas.height/2/2);
+  document.getElementById('detStats').innerHTML = '';
+}
 
 // === 下拉刷新（Pull to Refresh）===
 let pullState = { startY: 0, dy: 0, pulling: false, canPull: false };

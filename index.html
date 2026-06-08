@@ -665,26 +665,41 @@ function renderWatchlist(filter) {
   }).join('');
 }
 
-// 搜索添加
-const SEARCH_POOL = [
-  { name:'贵州茅台', code:'sh600519', price:1262.98, chg:-0.78, type:'stock', market:'ashare' },
-  { name:'宁德时代', code:'sz300750', price:198.50, chg:-2.15, type:'stock', market:'ashare' },
-  { name:'腾讯控股', code:'hk00700', price:445.80, chg:-1.58, type:'stock', market:'hk' },
-  { name:'小米集团', code:'hk01810', price:27.36, chg:-1.58, type:'stock', market:'hk' },
-  { name:'苹果', code:'usAAPL', price:300.23, chg:+0.50, type:'stock', market:'us' },
-  { name:'英伟达', code:'usNVDA', price:880.50, chg:-3.20, type:'stock', market:'us' },
-  { name:'半导体ETF', code:'sh512480', price:1.85, chg:-4.52, type:'etf', market:'ashare' },
-  { name:'中韩半导体ETF', code:'sh513310', price:5.254, chg:-6.45, type:'etf', market:'ashare' },
-  { name:'沪深300ETF', code:'sh510300', price:4.12, chg:-1.20, type:'etf', market:'ashare' },
-  { name:'纳斯达克ETF', code:'sz159941', price:1.95, chg:-3.80, type:'etf', market:'us' },
-  { name:'易方达蓝筹精选', code:'005827', price:1.68, chg:-0.68, type:'fund', market:'ashare' },
-  { name:'中欧医疗健康', code:'003095', price:0.85, chg:-2.10, type:'fund', market:'ashare' },
-  { name:'华夏大盘精选', code:'000011', price:14.25, chg:+0.32, type:'fund', market:'ashare' },
-];
+// 搜索添加 — 实时调用腾讯搜索 API
+const searchCache = {};
 
 function doSearch(q) {
-  if (!q.trim()) return [];
-  return SEARCH_POOL.filter(i => i.name.includes(q) || i.code.includes(q)).slice(0,6);
+  if (!q.trim()) return Promise.resolve([]);
+  // 先从缓存查
+  if (searchCache[q]) return Promise.resolve(searchCache[q]);
+
+  return new Promise(resolve => {
+    const cb = 'searchCB_' + Date.now();
+    window[cb] = function(data) {
+      if (data && Array.isArray(data)) {
+        const results = data.filter(d => d && d.code).map(d => {
+          const code = d.code || '';
+          let market = 'ashare';
+          if (code.startsWith('hk')) market = 'hk';
+          else if (code.startsWith('us') || /^[A-Z]{1,5}$/.test(code)) market = 'us';
+          let type = 'stock';
+          const name = d.name || '';
+          if (name.includes('ETF') || name.includes('ETN')) type = 'etf';
+          else if (name.includes('基金') || name.includes('精选') || name.includes('混合')) type = 'fund';
+          return { name, code, price: 0, chg: 0, type, market };
+        }).slice(0, 10);
+        searchCache[q] = results;
+        resolve(results);
+        return;
+      }
+      resolve([]);
+    };
+    const script = document.createElement('script');
+    script.src = `https://smartbox.gtimg.cn/s3/?v=2&q=${encodeURIComponent(q)}&t=all&callback=${cb}`;
+    script.onerror = () => { delete window[cb]; resolve([]); };
+    document.head.appendChild(script);
+    setTimeout(() => { if (window[cb]) { delete window[cb]; resolve([]); } }, 5000);
+  });
 }
 
 // ============================================================
@@ -762,25 +777,30 @@ document.addEventListener('DOMContentLoaded', function() {
   });
 
   // 自选搜索 — 直接在内联显示结果，不弹modal
+  let searchTimer = null;
   document.getElementById('watchSearch').addEventListener('input', function() {
     const q = this.value.trim();
+    if (searchTimer) clearTimeout(searchTimer);
     if (!q) {
       renderWatchlist(document.querySelector('.watchlist-tab.active').dataset.wt);
       return;
     }
-    const results = doSearch(q);
-    const container = document.getElementById('watchlistContent');
-    if (!results.length) {
-      container.innerHTML = '<div class="watch-empty"><div class="empty-icon">🔍</div><div class="empty-text">未找到匹配</div></div>';
-      return;
-    }
-    const wl = getWatchlist();
-    const m = {ashare:'A股',hk:'港股',us:'美股'};
-    const t = {stock:'股票',etf:'ETF',fund:'基金'};
-    container.innerHTML = results.map(i => {
-      const added = wl.some(w => w.code === i.code);
-      return `<div class="flow-item"><span class="flow-label"><strong>${i.name}</strong> ${i.code} <span style="font-size:11px;color:var(--text-secondary)">${m[i.market]}·${t[i.type]}</span></span><button class="filter-chip ${added?'active':''}" style="flex-shrink:0" onclick="addToWatchSearch('${i.code}')">${added?'已添加':'➕ 添加'}</button></div>`;
-    }).join('');
+    // 防抖 300ms，避免每次按键都调 API
+    searchTimer = setTimeout(async () => {
+      const results = await doSearch(q);
+      const container = document.getElementById('watchlistContent');
+      if (!results || !results.length) {
+        container.innerHTML = '<div class="watch-empty"><div class="empty-icon">🔍</div><div class="empty-text">未找到匹配</div></div>';
+        return;
+      }
+      const wl = getWatchlist();
+      const m = {ashare:'A股',hk:'港股',us:'美股'};
+      const t = {stock:'股票',etf:'ETF',fund:'基金'};
+      container.innerHTML = results.map(i => {
+        const added = wl.some(w => w.code === i.code);
+        return `<div class="flow-item"><span class="flow-label"><strong>${i.name}</strong> ${i.code} <span style="font-size:11px;color:var(--text-secondary)">${m[i.market]}·${t[i.type]}</span></span><button class="filter-chip ${added?'active':''}" style="flex-shrink:0" onclick="addToWatchSearch('${i.code}')">${added?'已添加':'➕ 添加'}</button></div>`;
+      }).join('');
+    }, 300);
   });
 
   // 添加自选按钮
@@ -1023,14 +1043,25 @@ function showSearchResults(results) {
 }
 
 function addToWatch(code) {
-  const item = SEARCH_POOL.find(i => i.code === code);
-  if (!item) return;
+  // 从搜索缓存找
+  let item = null;
+  for (const key in searchCache) {
+    item = searchCache[key].find(i => i.code === code);
+    if (item) break;
+  }
+  // 如果缓存没有，从代码推断
+  if (!item) {
+    let market = 'ashare';
+    if (code.startsWith('hk')) market = 'hk';
+    else if (code.startsWith('us') || /^[A-Z]{1,5}$/.test(code)) market = 'us';
+    let type = 'stock';
+    item = { name: code, code, price: 0, chg: 0, type, market };
+  }
   let wl = getWatchlist();
   if (wl.some(w => w.code === code)) return showToast('已在自选');
   wl.push({ ...item });
   saveWatchlist(wl);
   renderWatchlist(document.querySelector('.watchlist-tab.active').dataset.wt);
-  document.getElementById('addModal').classList.remove('show');
   showToast('添加成功 ✓');
 }
 

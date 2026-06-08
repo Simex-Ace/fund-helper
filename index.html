@@ -898,8 +898,7 @@ function updateLastUpdateTime() {
   if (el) el.textContent = '最后更新：' + getTimeStr();
 }
 
-// 每秒更新最后刷新时间
-setInterval(updateLastUpdateTime, 1000);
+// 只在实际刷新时更新时间，不做每秒跳秒
 
 async function updateNow() {
   const d = await fetchLiveQuotes();

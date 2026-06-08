@@ -718,11 +718,10 @@ document.addEventListener('DOMContentLoaded', function() {
       document.querySelectorAll('.page').forEach(p => p.classList.remove('active'));
       this.classList.add('active');
       document.getElementById('page-' + this.dataset.page).classList.add('active');
-      // 切到信号中心时全标已读
+      // 切到信号中心时全标已读（包括实时信号）
       if (this.dataset.page === 'signal') {
-        DATA.signals.forEach(s => markSignalRead(s.id));
+        getAllSignals().forEach(s => markSignalRead(s.id));
         updateSignalBadge();
-        renderSignals();
       }
     });
   });
@@ -1061,7 +1060,10 @@ if ('serviceWorker' in navigator) {
 
 // 实时行情获取 — 腾讯行情 API（JSONP 模式，无 CORS 问题）
 function fetchLiveQuotes() {
-  const codes = DATA.indices.map(i => i.code);
+  const indexCodes = DATA.indices.map(i => i.code);
+  // 加入自选股代码
+  const watchCodes = getWatchlist().map(w => w.code).filter(c => !indexCodes.includes(c));
+  const codes = [...new Set([...indexCodes, ...watchCodes])];
   const url = `https://web.sqt.gtimg.cn/q=${codes.join(',')}&t=${Date.now()}`;
   return new Promise(resolve => {
     const script = document.createElement('script');
@@ -1109,6 +1111,24 @@ function updateLiveQuotes(data) {
       updated = true;
     }
   });
+  // 更新自选股价格
+  const wl = getWatchlist();
+  let watchUpdated = false;
+  wl.forEach(w => {
+    const q = data[w.code];
+    if (q && q.price && q.chgPct > -20 && q.chgPct < 20) {
+      w.price = q.price;
+      w.chg = q.chgPct;
+      watchUpdated = true;
+    }
+  });
+  if (watchUpdated) {
+    saveWatchlist(wl);
+    const activePage = document.querySelector('.page.active');
+    if (activePage && activePage.id === 'page-watchlist') {
+      renderWatchlist(document.querySelector('.watchlist-tab.active').dataset.wt);
+    }
+  }
   if (updated) {
     renderMarketBar();
     renderTemp();

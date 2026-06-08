@@ -435,7 +435,7 @@ const DATA = {
     { name:'AMD', ratio:4.10, chg:-0.30 },
     { name:'拼多多(PDD)', ratio:5.20, chg:0.60 }
   ],
-  // 信号
+  // 信号（静态基础信号 + 实时生成的动态信号）
   signals: [
     { id:1, title:'煤炭板块5日涨幅领先', type:'板块异动', risk:'low', kind:'etf', market:'ashare', tag:'板块', tagClass:'buy', detail:'煤炭板块近5日涨幅6.36%领涨全市场，石油石化&银行跟涨，资金防御性配置明显', time:'今日 14:30' },
     { id:2, title:'北向资金大额流出贵州茅台', type:'主力动向', risk:'mid', kind:'stock', market:'ashare', tag:'主力卖出', tagClass:'warn', detail:'北向资金今日净流出茅台2.80亿元，近5日累计流出超23.6亿，短期需谨慎', time:'今日 15:00' },
@@ -445,8 +445,52 @@ const DATA = {
     { id:6, title:'英伟达获文艺复兴增持15%', type:'13F持仓', risk:'mid', kind:'stock', market:'us', tag:'机构增持', tagClass:'us', detail:'最新13F文件显示文艺复兴科技大幅增持英伟达15%，AI算力需求持续看好', time:'昨日 22:00' },
     { id:7, title:'纳斯达克上周五暴跌-4.18%后反弹', type:'市场波动', risk:'high', kind:'fund', market:'us', tag:'市场预警', tagClass:'warn', detail:'纳斯达克上周五暴跌4.18%创年内最大跌幅，今日标普期货小幅回升+0.36%', time:'今日 08:00' },
     { id:8, title:'南向资金持续加仓腾讯', type:'资金流向', risk:'low', kind:'stock', market:'hk', tag:'北向/南向', tagClass:'north', detail:'南向资金今日净买入腾讯11.78亿，港股通持仓占比升至11.61%，南下资金持续看好头部互联网', time:'今日 15:20' }
-  ]
+  ],
+  // 实时生成的动态信号
+  liveSignals: []
 };
+
+// ====== 实时信号生成器（纯前端，不依赖脚本）======
+function generateLiveSignals() {
+  const now = new Date();
+  const ts = now.getHours().toString().padStart(2,'0') + ':' + now.getMinutes().toString().padStart(2,'0');
+  const live = [];
+  let id = 100;
+
+  // 根据实时指数数据生成信号
+  DATA.indices.forEach(v => {
+    const p = v.chgPct;
+    if (Math.abs(p) > 1.5) {
+      live.push({
+        id: id++, title: `${v.name} ${p>0?'大涨':'大跌'}${Math.abs(p).toFixed(2)}%`,
+        type: '实时行情', risk: Math.abs(p) > 3 ? 'high' : 'mid',
+        kind: 'stock', market: v.market, tag: p>0?'市场走强':'市场走弱',
+        tagClass: p>0?'buy':'warn',
+        detail: `${v.name} 当前报 ${v.price.toLocaleString()}，${p>0?'上涨':'下跌'}${Math.abs(p).toFixed(2)}%`,
+        time: `今日 ${ts}`
+      });
+    }
+  });
+
+  // 北向资金信号（已有）
+  if (DATA.flowSummary.north) {
+    const n = DATA.flowSummary.north;
+    const val = parseFloat(n.value);
+    if (!isNaN(val) && Math.abs(val) > 5) {
+      live.push({
+        id: id++, title: `北向资金${val>0?'流入':'流出'}${Math.abs(val).toFixed(0)}亿`,
+        type: '资金流向', risk: 'mid', kind: 'stock', market: 'ashare',
+        tag: val>0?'北向加仓':'北向卖出', tagClass: val>0?'north':'warn',
+        detail: `北向资金当前${val>0?'净流入':'净流出'}${Math.abs(val).toFixed(2)}亿`,
+        time: `今日 ${ts}`
+      });
+    }
+  }
+
+  DATA.liveSignals = live;
+  // 刷新信号显示
+  renderSignals();
+}
 
 // 计算温度
 function calcTemp() {
@@ -577,8 +621,13 @@ function renderTracking(market) {
 }
 
 // ========== 信号中心 ==========
+function getAllSignals() {
+  return [...DATA.liveSignals, ...DATA.signals];
+}
+
 function renderSignals() {
-  const html = DATA.signals.map(s => {
+  const all = getAllSignals();
+  const html = all.map(s => {
     const riskClass = s.risk === 'low' ? 'risk-low' : s.risk === 'mid' ? 'risk-mid' : 'risk-high';
     const riskLabel = s.risk === 'low' ? '低风险' : s.risk === 'mid' ? '中风险' : '高风险';
     return `<div class="signal-card ${riskClass}">
@@ -913,7 +962,7 @@ async function updateNow() {
 }
 
 function applySignalFilters(filters) {
-  let list = DATA.signals;
+  let list = getAllSignals();
   // OR 逻辑：两个或三个同时选时，任一个匹配即显示
   const activeGroups = Object.entries(filters).filter(([k,v]) => v).length;
   if (activeGroups >= 2) {
@@ -954,7 +1003,7 @@ function markSignalRead(id) {
 }
 function updateSignalBadge() {
   const read = getReadSignals();
-  const unread = DATA.signals.filter(s => !read.includes(s.id)).length;
+  const unread = getAllSignals().filter(s => !read.includes(s.id)).length;
   const badge = document.querySelector('.tab-item[data-page="signal"] .tab-badge');
   if (badge) {
     if (unread > 0) { badge.textContent = unread; badge.style.display = ''; }
@@ -1088,13 +1137,13 @@ let refreshTimer = null;
 
 function startAutoRefresh() {
   // 立即拉一次
-  fetchLiveQuotes().then(d => { if (d) { updateLiveQuotes(d); updateLastUpdateTime(); } });
-  fetchLiveFlows().then(() => updateLastUpdateTime());
-  // 每 60 秒刷新
+  fetchLiveQuotes().then(d => { if (d) { updateLiveQuotes(d); updateLastUpdateTime(); generateLiveSignals(); } });
+  fetchLiveFlows().then(() => { updateLastUpdateTime(); generateLiveSignals(); });
+  // 每 30 秒刷新 + 生成新信号
   refreshTimer = setInterval(() => {
-    fetchLiveQuotes().then(d => { if (d) { updateLiveQuotes(d); updateLastUpdateTime(); } });
-    fetchLiveFlows().then(() => updateLastUpdateTime());
-  }, 60000);
+    fetchLiveQuotes().then(d => { if (d) { updateLiveQuotes(d); updateLastUpdateTime(); generateLiveSignals(); } });
+    fetchLiveFlows().then(() => { updateLastUpdateTime(); generateLiveSignals(); });
+  }, 30000);
 }
 
 // 页面可见时刷新，不可见时暂停（省电）

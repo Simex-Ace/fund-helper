@@ -133,7 +133,6 @@ body{font-family:-apple-system,PingFang SC,Helvetica Neue,sans-serif;background:
 .watch-market{font-size:10px;padding:1px 6px;border-radius:6px;background:var(--bg);color:var(--text-secondary);margin-left:4px}
 .watch-price{font-size:15px;font-weight:600;text-align:right}
 .watch-chg{font-size:12px;font-weight:500;text-align:right}
-.watch-signal{width:16px;height:16px;border-radius:50%;background:var(--red);color:#fff;font-size:9px;display:flex;align-items:center;justify-content:center;margin-left:6px}
 .watch-empty{text-align:center;padding:40px 0;color:var(--text-tertiary)}
 .watch-empty .empty-icon{font-size:48px;margin-bottom:12px}
 .watch-empty .empty-text{font-size:14px}
@@ -287,7 +286,10 @@ body{font-family:-apple-system,PingFang SC,Helvetica Neue,sans-serif;background:
     <button class="watchlist-tab" data-wt="etf">ETF</button>
     <button class="watchlist-tab" data-wt="stock">股票</button>
   </div>
-  <div class="watch-search"><input type="text" id="watchSearch" placeholder="搜索添加自选..."></div>
+  <div style="display:flex;gap:8px;align-items:center;margin-bottom:12px">
+    <div class="watch-search" style="flex:1;margin-bottom:0"><input type="text" id="watchSearch" placeholder="搜索添加自选..."></div>
+    <button style="flex-shrink:0;padding:10px 12px;border-radius:12px;border:1px solid var(--border);background:var(--bg);font-size:13px;cursor:pointer" onclick="doRefresh()">⟳</button>
+  </div>
   <div id="watchlistContent"></div>
   <button class="fab" id="addWatchBtn">+</button>
 </div>
@@ -312,6 +314,12 @@ body{font-family:-apple-system,PingFang SC,Helvetica Neue,sans-serif;background:
     <div class="version">散户基金助手 v1.0.0</div>
     <div>数据来源：腾讯自选股 · 公开市场信息</div>
     <div style="margin-top:4px;">⚠️ 不构成投资建议，投资有风险</div>
+  </div>
+  <div class="card">
+    <div class="setting-item" style="cursor:pointer" onclick="resetAllData()">
+      <span class="setting-label" style="color:var(--red)">🗑️ 清除所有数据</span>
+      <span class="setting-value">重置自选、信号已读等</span>
+    </div>
   </div>
 </div>
 
@@ -656,11 +664,9 @@ function renderWatchlist(filter) {
   container.innerHTML = list.map(i => {
     const isUp = i.chg >= 0;
     const cls = isUp ? 'up' : 'down';
-    const signalCount = DATA.signals.filter(s => s.title.includes(i.name.slice(0,2))).length;
     return `<div class="watch-item" data-code="${i.code}">
       <div class="watch-info"><span class="watch-name">${i.name}</span><span class="watch-code">${i.code}</span><span class="watch-market">${i.market==='ashare'?'A股':i.market==='hk'?'港股':'美股'}</span></div>
       <div><div class="watch-price ${cls}">${i.price.toFixed(2)}</div><div class="watch-chg ${cls}">${isUp?'+':''}${i.chg.toFixed(2)}%</div></div>
-      ${signalCount>0?`<div class="watch-signal">${signalCount}</div>`:''}
     </div>`;
   }).join('');
 }
@@ -731,30 +737,33 @@ function doSearch(q) {
 // 初始化 & 事件绑定
 // ============================================================
 document.addEventListener('DOMContentLoaded', function() {
-  // 迁移旧数据：修复错误代码格式
+  // 迁移旧数据：修复错误代码格式 + 去重
   function migrateWatchlist() {
     let wl = getWatchlist();
     let changed = false;
-    wl.forEach(w => {
+    const seen = new Set();
+    wl = wl.filter(w => {
       const old = w.code;
-      // ke.oq → usKE, bidu.oq → usBIDU
+      // 修复格式
       if (old.includes('.') && !old.startsWith('us')) {
         const base = old.split('.')[0].toUpperCase();
         w.code = 'us' + base;
         changed = true;
       }
-      // 纯数字 → 加 sh/sz 前缀
       if (/^\d{6}$/.test(old)) {
         const n = parseInt(old);
         if (n >= 600000 && n < 700000) w.code = 'sh' + old;
         else w.code = 'sz' + old;
         changed = true;
       }
-      // 5位数字 → hk
       if (/^\d{5}$/.test(old)) {
         w.code = 'hk' + old;
         changed = true;
       }
+      // 去重
+      if (seen.has(w.code)) return false;
+      seen.add(w.code);
+      return true;
     });
     if (changed) saveWatchlist(wl);
   }
@@ -1140,6 +1149,23 @@ function showToast(msg) {
   const t = document.createElement('div'); t.className='toast'; t.textContent=msg;
   document.body.appendChild(t);
   setTimeout(() => t.remove(), 1500);
+}
+
+// 一键清除所有本地数据
+function resetAllData() {
+  if (!confirm('确定清除所有自选和已读记录？')) return;
+  localStorage.removeItem('watchlist');
+  localStorage.removeItem('readSignals');
+  // 重置至初始自选
+  saveWatchlist([
+    { name:'贵州茅台', code:'sh600519', price:1262.98, chg:-0.78, type:'stock', market:'ashare' },
+    { name:'腾讯控股', code:'hk00700', price:445.80, chg:-1.58, type:'stock', market:'hk' },
+    { name:'半导体ETF', code:'sh512480', price:1.85, chg:-4.52, type:'etf', market:'ashare' },
+    { name:'易方达蓝筹精选', code:'005827', price:1.68, chg:-0.68, type:'fund', market:'ashare' }
+  ]);
+  renderWatchlist('all');
+  document.querySelectorAll('.tab-badge').forEach(b => b.style.display = 'none');
+  showToast('已重置 ✓ 刷新页面生效');
 }
 
 // 搜索添加（从内联搜索结果添加）

@@ -697,13 +697,26 @@ function doSearch(q) {
         if (!code || !name || seen.has(code)) return;
         seen.add(code);
         let market = 'ashare';
-        if (code.startsWith('hk') || code.startsWith('0')) market = 'hk';
-        else if (code.startsWith('us') || /^[A-Z]{2,5}$/.test(code.split('.')[0])) market = 'us';
+        const mkt = (parts[0]||'').toLowerCase();
+        if (mkt === 'hk') market = 'hk';
+        else if (mkt === 'us') market = 'us';
+        // 统一代码格式：美股 bidu.oq → usBIDU, 港股 00700 → hk00700
+        let normalizedCode = code;
+        if (market === 'us') {
+          normalizedCode = 'us' + code.split('.')[0].toUpperCase();
+        } else if (market === 'hk') {
+          normalizedCode = 'hk' + code;
+        } else if (market === 'ashare' && !code.startsWith('sh') && !code.startsWith('sz')) {
+          // A股代码格式处理
+          const num = parseInt(code);
+          if (num >= 600000 && num < 700000) normalizedCode = 'sh' + code;
+          else if (num >= 0) normalizedCode = 'sz' + code;
+        }
         let type = 'stock';
         const t = (parts[4]||'');
         if (t.includes('ETF') || t.includes('ETN') || name.includes('ETF')) type = 'etf';
         else if (t.includes('QZ') || name.includes('基金') || name.includes('精选') || name.includes('混合')) type = 'fund';
-        results.push({ name, code, price: 0, chg: 0, type, market });
+        results.push({ name, code: normalizedCode, price: 0, chg: 0, type, market });
       });
       searchCache[q] = results;
       resolve(results);
@@ -718,6 +731,34 @@ function doSearch(q) {
 // 初始化 & 事件绑定
 // ============================================================
 document.addEventListener('DOMContentLoaded', function() {
+  // 迁移旧数据：修复错误代码格式
+  function migrateWatchlist() {
+    let wl = getWatchlist();
+    let changed = false;
+    wl.forEach(w => {
+      const old = w.code;
+      // ke.oq → usKE, bidu.oq → usBIDU
+      if (old.includes('.') && !old.startsWith('us')) {
+        const base = old.split('.')[0].toUpperCase();
+        w.code = 'us' + base;
+        changed = true;
+      }
+      // 纯数字 → 加 sh/sz 前缀
+      if (/^\d{6}$/.test(old)) {
+        const n = parseInt(old);
+        if (n >= 600000 && n < 700000) w.code = 'sh' + old;
+        else w.code = 'sz' + old;
+        changed = true;
+      }
+      // 5位数字 → hk
+      if (/^\d{5}$/.test(old)) {
+        w.code = 'hk' + old;
+        changed = true;
+      }
+    });
+    if (changed) saveWatchlist(wl);
+  }
+  migrateWatchlist();
   // 初始化自选数据
   if (!localStorage.getItem('watchlist')) {
     saveWatchlist([
@@ -1061,10 +1102,11 @@ function addToWatch(code) {
     if (item) break;
   }
   if (!item) {
-    let market = 'ashare';
+    let market = 'ashare', nc = code;
     if (code.startsWith('hk')) market = 'hk';
-    else if (code.startsWith('us') || /^[A-Z]{1,5}$/.test(code)) market = 'us';
-    item = { name: code, code, price: 0, chg: 0, type: 'stock', market };
+    else if (code.startsWith('us')) market = 'us';
+    else if (code.startsWith('sh') || code.startsWith('sz') || code.startsWith('bj')) market = 'ashare';
+    item = { name: code, code: nc, price: 0, chg: 0, type: 'stock', market };
   }
   let wl = getWatchlist();
   if (wl.some(w => w.code === code)) return showToast('已在自选');

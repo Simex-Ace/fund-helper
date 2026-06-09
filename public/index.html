@@ -401,10 +401,10 @@ const DATA = {
     { name:'恒生指数', code:'hkHSI', price:24628.74, chgPct:-1.33, market:'hk' },
     { name:'国企指数', code:'hkHSCEI', price:8850.30, chgPct:-1.50, market:'hk' },
     { name:'恒生科技', code:'hkHSTECH', price:4950.60, chgPct:-2.10, market:'hk' },
-    // 美股（上周五收盘）
-    { name:'标普500', code:'us.SPX', price:7383.74, chgPct:-2.64, market:'us' },
-    { name:'纳斯达克', code:'us.IXIC', price:25709.43, chgPct:-4.18, market:'us' },
-    { name:'道琼斯', code:'us.DJI', price:50866.78, chgPct:-1.35, market:'us' }
+    // 美股
+    { name:'标普500', code:'usSPX', price:0, chgPct:0, market:'us' },
+    { name:'纳斯达克', code:'usIXIC', price:0, chgPct:0, market:'us' },
+    { name:'道琼斯', code:'usDJI', price:0, chgPct:0, market:'us' }
   ],
   // 申万一级行业 Top 10 by 5日涨幅
   sectors: [
@@ -606,14 +606,16 @@ function renderMarketBar() {
   ];
   document.getElementById('marketBar').innerHTML = groups.map(g => {
     const st = getMarketStatus(g.market);
-    return `<div style="flex:1">
-      <div style="font-size:11px;color:var(--text-secondary);font-weight:600;margin-bottom:6px;text-align:center;letter-spacing:1px;display:flex;align-items:center;justify-content:center;gap:4px">${g.label}<span class="m-status ${st.cls}">${st.text}</span></div>
+    const dataTime = DATA._dataDate?.[g.market] || '';
+    return `<div style="flex:1;min-width:0">
+      <div style="font-size:11px;color:var(--text-secondary);font-weight:600;margin-bottom:4px;text-align:center;letter-spacing:1px;display:flex;align-items:center;justify-content:center;gap:4px;flex-wrap:wrap">${g.label}<span class="m-status ${st.cls}">${st.text}</span></div>
+      ${dataTime ? `<div style="font-size:9px;color:var(--text-tertiary);text-align:center;margin-bottom:4px">${DATA.date} ${dataTime}</div>` : ''}
       ${g.items.map(v => {
         const p = typeof v.chgPct === 'number' ? v.chgPct : 0;
         const cls = p>0?'up':'down';
-        return `<div class="market-item" style="margin-bottom:4px">
+        return `<div class="market-item" style="margin-bottom:3px">
           <div class="market-name">${v.name}</div>
-          <div class="market-price ${cls}">${typeof v.price==='number'?v.price.toLocaleString():'--'}</div>
+          <div class="market-price ${cls}">${v.price ? v.price.toLocaleString() : '--'}</div>
           <div class="market-chg ${cls}">${p>0?'+':''}${p.toFixed(2)}%</div>
         </div>`;
       }).join('')}
@@ -1523,10 +1525,11 @@ function updateLiveQuotes(data) {
   let updated = false;
   DATA.indices.forEach(idx => {
     const q = data[idx.code];
-    // 只接受合理的涨跌幅（-20% ~ +20%），避免API字段错位导致颜色错误
     if (q && q.price && q.chgPct > -20 && q.chgPct < 20) {
       idx.price = q.price;
       idx.chgPct = q.chgPct;
+      if (!DATA._dataDate) DATA._dataDate = {};
+      DATA._dataDate[idx.market] = new Date().toLocaleTimeString('zh-CN', {hour12:false});
       updated = true;
     }
   });

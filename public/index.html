@@ -406,48 +406,10 @@ const DATA = {
     { name:'纳斯达克', code:'usIXIC', price:0, chgPct:0, market:'us' },
     { name:'道琼斯', code:'usDJI', price:0, chgPct:0, market:'us' }
   ],
-  // 申万一级行业 Top 10 by 5日涨幅
-  sectors: [
-    { name:'煤炭', chg5:6.36, chg:2.10, bar:100 },
-    { name:'通信', chg5:3.87, chg:-0.82, bar:70 },
-    { name:'机械设备', chg5:2.33, chg:0.55, bar:55 },
-    { name:'石油石化', chg5:1.29, chg:-1.10, bar:40 },
-    { name:'银行', chg5:1.10, chg:1.74, bar:35 },
-    { name:'基础化工', chg5:0.77, chg:-1.85, bar:30 },
-    { name:'家用电器', chg5:0.14, chg:-0.68, bar:25 },
-    { name:'国防军工', chg5:-0.72, chg:-2.30, bar:20 },
-    { name:'电子', chg5:-0.82, chg:-3.50, bar:18 },
-    { name:'钢铁', chg5:-1.26, chg:-2.10, bar:15 }
-  ],
-  // 概念板块 Top 5
-  concepts: [
-    { name:'电子特气', chg5:12.02, chg:3.20, bar:100 },
-    { name:'玻璃基板封装', chg5:10.75, chg:2.80, bar:90 },
-    { name:'被动元件', chg5:9.10, chg:1.50, bar:80 },
-    { name:'触摸屏概念', chg5:8.89, chg:0.90, bar:78 },
-    { name:'纳米压印', chg5:7.90, chg:1.20, bar:72 }
-  ],
-  // 风险分类
-  riskItems: {
-    low: [
-      { name:'华夏大盘', type:'基金', chg:'+0.32%' },
-      { name:'天弘沪深300ETF', type:'ETF', chg:'-1.15%' },
-      { name:'易方达蓝筹', type:'基金', chg:'-0.68%' },
-      { name:'国债ETF', type:'ETF', chg:'+0.08%' }
-    ],
-    mid: [
-      { name:'半导体ETF', type:'ETF', chg:'-4.52%' },
-      { name:'中欧医疗', type:'基金', chg:'-2.10%' },
-      { name:'贵州茅台', type:'股票', chg:'-0.78%' },
-      { name:'通信ETF', type:'ETF', chg:'+1.20%' }
-    ],
-    high: [
-      { name:'机器人概念ETF', type:'ETF', chg:'-2.17%' },
-      { name:'中天科技', type:'股票', chg:'+7.51%' },
-      { name:'绿的谐波', type:'股票', chg:'+8.97%' },
-      { name:'达实智能', type:'股票', chg:'+9.98%' }
-    ]
-  },
+  // 板块缓存（实时拉取填充）
+  sectors: [],
+  concepts: [],
+  riskItems: { low:[], mid:[], high:[] },
   // 主力风向标
   flowSummary: {
     north: { label:'北向资金(茅台)', value:'-2.80亿', dir:'out' },
@@ -634,12 +596,55 @@ function renderTemp() {
   document.getElementById('tempDesc').textContent = descs[t.label] || '';
 }
 
+// ============================================================
+// 实时板块 & 风险雷达
+// ============================================================
+const EM_SECTOR_API = 'https://push2.eastmoney.com/api/qt/clist/get?pn=1&pz=20&po=1&np=1&fltt=2&invt=2&ut=b2884a393a59ad64002292a3e90d46a5&fields=f12,f14,f2,f3';
+
+async function fetchSectorBoards() {
+  try {
+    const r1 = await fetch(EM_SECTOR_API + '&fs=m:90+t:2');
+    const d1 = await r1.json();
+    const sectors = (d1?.data?.diff || []).slice(0, 10).map(i => ({
+      name: i.f14, chg: i.f3, bar: Math.min(Math.abs(i.f3) * 20, 100)
+    }));
+    DATA.sectors = sectors;
+
+    const r2 = await fetch(EM_SECTOR_API + '&fs=m:90+t:3');
+    const d2 = await r2.json();
+    const concepts = (d2?.data?.diff || []).slice(0, 5).map(i => ({
+      name: i.f14, chg: i.f3, bar: Math.min(Math.abs(i.f3) * 20, 100)
+    }));
+    DATA.concepts = concepts;
+
+    const allSectors = d1?.data?.diff || [];
+    const highRisk = allSectors.filter(i => i.f3 < -3).slice(0, 4);
+    const midRisk = allSectors.filter(i => i.f3 >= -3 && i.f3 < -1).slice(0, 4);
+    const lowRisk = allSectors.filter(i => i.f3 > 0).sort((a,b) => b.f3 - a.f3).slice(0, 4);
+
+    DATA.riskItems = {
+      low: lowRisk.length ? lowRisk.map(i => ({ name: i.f14, type:'行业', chg: '+' + i.f3.toFixed(2) + '%' }))
+        : [{ name:'暂无', type:'', chg:'--' }],
+      mid: midRisk.length ? midRisk.map(i => ({ name: i.f14, type:'行业', chg: i.f3.toFixed(2) + '%' }))
+        : [{ name:'暂无下跌板块', type:'', chg:'--' }],
+      high: highRisk.length ? highRisk.map(i => ({ name: i.f14, type:'行业', chg: i.f3.toFixed(2) + '%' }))
+        : [{ name:'暂无大跌板块', type:'', chg:'--' }]
+    };
+
+    renderSectors(document.getElementById('sectorToggle')?.dataset?.type || 'industry');
+    renderRisk(document.querySelector('.risk-tab.active')?.dataset?.level || 'low');
+  } catch(e) {}
+}
+
 function renderSectors(type) {
   const list = type === 'concept' ? DATA.concepts : DATA.sectors;
+  if (!list.length) { document.getElementById('sectorList').innerHTML = '<div style="text-align:center;padding:20px;color:var(--text-tertiary);font-size:12px">加载中…</div>'; return; }
+  const maxAbs = Math.max(...list.map(s => Math.abs(s.chg)), 1);
   const html = list.map((s,i) => {
     const cls = s.chg >= 0 ? 'up' : 'down';
-    const barColor = s.chg5 >= 0 ? '#FF3B30' : '#34C759'; // 5日涨=红, 跌=绿
-    return `<div class="sector-item"><span class="sector-rank">${i+1}</span><span class="sector-name">${s.name}</span><span class="sector-chg ${cls}">${s.chg5>0?'+':''}${s.chg5.toFixed(2)}%</span><div class="sector-bar"><div class="sector-bar-fill" style="width:${s.bar}%;background:${barColor}"></div></div></div>`;
+    const barPct = Math.abs(s.chg) / maxAbs * 100;
+    const barColor = s.chg >= 0 ? '#FF3B30' : '#34C759';
+    return `<div class="sector-item"><span class="sector-rank">${i+1}</span><span class="sector-name">${s.name}</span><span class="sector-chg ${cls}">${s.chg>0?'+':''}${s.chg.toFixed(2)}%</span><div class="sector-bar"><div class="sector-bar-fill" style="width:${barPct}%;background:${barColor}"></div></div></div>`;
   }).join('');
   document.getElementById('sectorList').innerHTML = html;
 }
@@ -647,7 +652,8 @@ function renderSectors(type) {
 function renderRisk(level) {
   const items = DATA.riskItems[level] || DATA.riskItems.low;
   const html = items.map(i => {
-    const cls = i.chg.startsWith('+') ? 'up' : 'down';
+    const isUp = i.chg && i.chg.startsWith('+');
+    const cls = isUp ? 'up' : i.chg !== '--' ? 'down' : '';
     return `<div class="risk-item"><span class="ri-name">${i.name}</span><span class="ri-type">${i.type}</span><span class="ri-chg ${cls}">${i.chg}</span></div>`;
   }).join('');
   document.getElementById('riskList').innerHTML = html;
@@ -861,8 +867,7 @@ document.addEventListener('DOMContentLoaded', function() {
   // 初始渲染
   renderMarketBar();
   renderTemp();
-  renderSectors('industry');
-  renderRisk('low');
+  fetchSectorBoards();  // 异步拉取，完成后自动渲染
   renderFlowSummary();
   renderTracking('ashare');
   renderSignals();
@@ -1327,6 +1332,7 @@ async function updateNow() {
   const d = await fetchLiveQuotes();
   if (d) updateLiveQuotes(d);
   await fetchLiveFlows();
+  await fetchSectorBoards();
   updateLastUpdateTime();
   // 更新时间戳
   const header = document.querySelector('.page-header .sub');

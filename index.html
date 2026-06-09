@@ -603,9 +603,9 @@ function renderTemp() {
 const EM_SECTOR_API = 'https://push2.eastmoney.com/api/qt/clist/get?pn=1&pz=20&po=1&np=1&fltt=2&invt=2&ut=b2884a393a59ad64002292a3e90d46a5&fields=f12,f14,f2,f3';
 
 async function fetchSectorBoards() {
+  const opts = { credentials: 'omit' };
   try {
-    // 行业板块
-    const r1 = await fetch(EM_SECTOR_API + '&fs=m:90+t:2');
+    const r1 = await fetch(EM_SECTOR_API + '&fs=m:90+t:2', opts);
     const d1 = await r1.json();
     const sectors = (d1?.data?.diff || []).slice(0, 10).map(i => ({
       name: i.f14, chg: i.f3, bar: Math.min(Math.abs(i.f3) * 20, 100)
@@ -613,7 +613,7 @@ async function fetchSectorBoards() {
     DATA.sectors = sectors;
 
     // 概念板块
-    const r2 = await fetch(EM_SECTOR_API + '&fs=m:90+t:3');
+    const r2 = await fetch(EM_SECTOR_API + '&fs=m:90+t:3', opts);
     const d2 = await r2.json();
     const concepts = (d2?.data?.diff || []).slice(0, 5).map(i => ({
       name: i.f14, chg: i.f3, bar: Math.min(Math.abs(i.f3) * 20, 100)
@@ -639,9 +639,7 @@ async function fetchSectorBoards() {
     // 更新当前视图
     renderSectors(document.getElementById('sectorToggle')?.dataset?.type || 'industry');
     renderRisk(document.querySelector('.risk-tab.active')?.dataset?.level || 'low');
-  } catch(e) {
-    // 静默失败，保留上次数据
-  }
+  } catch(e) { console.warn('板块数据拉取失败', e); }
 }
 
 function renderSectors(type) {

@@ -221,7 +221,7 @@ body{font-family:-apple-system,PingFang SC,Helvetica Neue,sans-serif;background:
 
 <!-- ========== 市场全景 ========== -->
 <div id="page-panorama" class="page active">
-  <div class="page-header"><h1>市场全景</h1><span class="sub">2026-06-08</span></div>
+  <div class="page-header"><h1>市场全景</h1><span class="sub" id="marketDate"></span></div>
 
   <!-- 三市场概况 -->
   <div class="market-bar" id="marketBar"></div>
@@ -387,7 +387,7 @@ body{font-family:-apple-system,PingFang SC,Helvetica Neue,sans-serif;background:
 // 嵌入式实时市场数据
 // ============================================================
 const DATA = {
-  date: '2026-06-08',
+  date: (()=>{const d=new Date();return d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0')})(),
   // 每个市场3个指数，共9个
   indices: [
     // A股
@@ -1314,7 +1314,7 @@ async function updateNow() {
   // 更新时间戳
   const header = document.querySelector('.page-header .sub');
   if (header && !header.textContent.includes('实时')) {
-    header.textContent = '2026-06-08 · 实时';
+    header.textContent = DATA.date + ' · 实时';
   }
 }
 
@@ -1586,7 +1586,7 @@ document.addEventListener('visibilitychange', () => {
   setTimeout(initPullToRefresh, 300);
 
   // 标记数据更新时间
-  document.querySelector('.page-header .sub').textContent += ' · 实时';
+  document.querySelector('.page-header .sub').textContent = DATA.date + ' · 实时';
 </script>
 </body>
 </html>

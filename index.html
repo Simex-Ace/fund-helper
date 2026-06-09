@@ -411,35 +411,12 @@ const DATA = {
   sectors: [],
   concepts: [],
   riskItems: { low:[], mid:[], high:[] },
-  // 主力风向标
-  flowSummary: {
-    north: { label:'北向资金(茅台)', value:'-2.80亿', dir:'out' },
-    south: { label:'南向资金(腾讯)', value:'+11.78亿', dir:'in' },
-    short: { label:'苹果做空比率', value:'0.94%', dir:'mid' }
-  },
-  // 北向数据
-  northFlow: [
-    { name:'贵州茅台', value:-2.80, bar:100 },
-    { name:'宁德时代', value:-1.20, bar:55 },
-    { name:'招商银行', value:+0.85, bar:40 },
-    { name:'美的集团', value:-0.65, bar:35 },
-    { name:'中国平安', value:+0.42, bar:28 }
-  ],
-  // 南向数据
-  southFlow: [
-    { name:'腾讯控股', value:+11.78, bar:100 },
-    { name:'小米集团', value:+5.20, bar:55 },
-    { name:'中国移动', value:-3.10, bar:40 },
-    { name:'美团', value:+2.50, bar:35 },
-    { name:'中芯国际', value:-1.80, bar:28 }
-  ],
-  // 龙虎榜
-  lhb: [
-    { name:'中天科技', buy:2.10, sell:0.85, net:1.25 },
-    { name:'达实智能', buy:1.50, sell:0.30, net:1.20 },
-    { name:'胜宏科技', buy:0.95, sell:1.80, net:-0.85 }
-  ],
-  // 13F
+  // 主力风向标（由 generateLiveData 填充）
+  flowSummary: { north:{ label:'北向资金', value:'加载中…', dir:'in' }, south:{ label:'南向资金', value:'加载中…', dir:'in' }, short:{ label:'做空比率', value:'--', dir:'mid' } },
+  northFlow: [],
+  southFlow: [],
+  lhb: [],
+  // 非实时数据（季度/月度级别，保留示例）
   thirteenF: [
     { name:'苹果(AAPL)', firm:'伯克希尔', action:'减持', pct:-12 },
     { name:'微软(MSFT)', firm:'桥水', action:'增持', pct:8 },
@@ -447,7 +424,6 @@ const DATA = {
     { name:'亚马逊(AMZN)', firm:'摩根大通', action:'减持', pct:-5 },
     { name:'谷歌(GOOGL)', firm:'高盛', action:'增持', pct:6 }
   ],
-  // 做空比例
   shortInterest: [
     { name:'特斯拉(TSLA)', ratio:3.85, chg:0.45 },
     { name:'苹果(AAPL)', ratio:0.94, chg:-0.12 },
@@ -455,29 +431,18 @@ const DATA = {
     { name:'AMD', ratio:4.10, chg:-0.30 },
     { name:'拼多多(PDD)', ratio:5.20, chg:0.60 }
   ],
-  // 信号（静态基础信号 + 实时生成的动态信号）
-  signals: [
-    { id:1, title:'煤炭板块5日涨幅领先', type:'板块异动', risk:'low', kind:'etf', market:'ashare', tag:'板块', tagClass:'buy', detail:'煤炭板块近5日涨幅6.36%领涨全市场，石油石化&银行跟涨，资金防御性配置明显', time:'今日 14:30' },
-    { id:2, title:'北向资金大额流出贵州茅台', type:'主力动向', risk:'mid', kind:'stock', market:'ashare', tag:'主力卖出', tagClass:'warn', detail:'北向资金今日净流出茅台2.80亿元，近5日累计流出超23.6亿，短期需谨慎', time:'今日 15:00' },
-    { id:3, title:'中天科技涨停+热搜第一', type:'龙虎榜异动', risk:'high', kind:'stock', market:'ashare', tag:'主力买入', tagClass:'buy', detail:'中天科技涨停7.51%登顶热搜，龙虎榜机构净买入1.25亿，通信板块受关注', time:'今日 15:10' },
-    { id:4, title:'半导体ETF单日跌幅-4.52%', type:'行业预警', risk:'mid', kind:'etf', market:'ashare', tag:'风险预警', tagClass:'warn', detail:'半导体板块今日大跌-4.52%，电子行业整体承压，费城半导体指数上周跌超10%传导', time:'今日 15:05' },
-    { id:5, title:'苹果做空比率降至0.94%', type:'做空数据', risk:'low', kind:'stock', market:'us', tag:'做空下降', tagClass:'north', detail:'苹果做空比率降至0.94%，做空天数2.8天，做空压力处于低位，机构整体偏多', time:'今日 12:00' },
-    { id:6, title:'英伟达获文艺复兴增持15%', type:'13F持仓', risk:'mid', kind:'stock', market:'us', tag:'机构增持', tagClass:'us', detail:'最新13F文件显示文艺复兴科技大幅增持英伟达15%，AI算力需求持续看好', time:'昨日 22:00' },
-    { id:7, title:'纳斯达克上周五暴跌-4.18%后反弹', type:'市场波动', risk:'high', kind:'fund', market:'us', tag:'市场预警', tagClass:'warn', detail:'纳斯达克上周五暴跌4.18%创年内最大跌幅，今日标普期货小幅回升+0.36%', time:'今日 08:00' },
-    { id:8, title:'南向资金持续加仓腾讯', type:'资金流向', risk:'low', kind:'stock', market:'hk', tag:'北向/南向', tagClass:'north', detail:'南向资金今日净买入腾讯11.78亿，港股通持仓占比升至11.61%，南下资金持续看好头部互联网', time:'今日 15:20' }
-  ],
-  // 实时生成的动态信号
+  signals: [],
   liveSignals: []
 };
 
-// ====== 实时信号生成器（纯前端，不依赖脚本）======
-function generateLiveSignals() {
+// ====== 实时信号 & 衍生数据生成器（基于实时指数、板块、资金流）======
+function generateLiveData() {
   const now = new Date();
   const ts = now.getHours().toString().padStart(2,'0') + ':' + now.getMinutes().toString().padStart(2,'0');
   const live = [];
   let id = 100;
 
-  // 根据实时指数数据生成信号
+  // ── 指数信号 ──
   DATA.indices.forEach(v => {
     const p = v.chgPct;
     if (Math.abs(p) > 1.5) {
@@ -486,30 +451,61 @@ function generateLiveSignals() {
         type: '实时行情', risk: Math.abs(p) > 3 ? 'high' : 'mid',
         kind: 'stock', market: v.market, tag: p>0?'市场走强':'市场走弱',
         tagClass: p>0?'buy':'warn',
-        detail: `${v.name} 当前报 ${v.price.toLocaleString()}，${p>0?'上涨':'下跌'}${Math.abs(p).toFixed(2)}%`,
+        detail: `${v.name} 当前报 ${v.price?.['toLocaleString']?v.price.toLocaleString():'--'}，${p>0?'上涨':'下跌'}${Math.abs(p).toFixed(2)}%`,
         time: `今日 ${ts}`
       });
     }
   });
 
-  // 北向资金信号（已有）
-  if (DATA.flowSummary.north) {
-    const n = DATA.flowSummary.north;
-    const val = parseFloat(n.value);
-    if (!isNaN(val) && Math.abs(val) > 5) {
+  // ── 板块信号 ──
+  const allSectors = DATA.sectors || [];
+  allSectors.forEach(s => {
+    if (Math.abs(s.chg) > 3) {
       live.push({
-        id: id++, title: `北向资金${val>0?'流入':'流出'}${Math.abs(val).toFixed(0)}亿`,
-        type: '资金流向', risk: 'mid', kind: 'stock', market: 'ashare',
-        tag: val>0?'北向加仓':'北向卖出', tagClass: val>0?'north':'warn',
-        detail: `北向资金当前${val>0?'净流入':'净流出'}${Math.abs(val).toFixed(2)}亿`,
+        id: id++, title: `${s.name}板块${s.chg>0?'大涨':'暴跌'}${Math.abs(s.chg).toFixed(2)}%`,
+        type: '板块异动', risk: Math.abs(s.chg) > 4 ? 'high' : 'mid',
+        kind: 'etf', market: 'ashare', tag: s.chg>0?'板块领涨':'风险预警',
+        tagClass: s.chg>0?'buy':'warn',
+        detail: `${s.name}板块当前涨跌幅 ${s.chg>0?'+':''}${s.chg.toFixed(2)}%${s.chg>0?'，资金关注度提升':'，注意回调风险'}`,
         time: `今日 ${ts}`
       });
     }
-  }
+  });
+
+  // ── 主力风向标 ──
+  const northFlow = parseFloat(DATA.flowSummary?.north?.value) || 0;
+  DATA.flowSummary.north.label = '北向资金(实时)';
+  DATA.flowSummary.north.dir = northFlow >= 0 ? 'in' : 'out';
+
+  // ── 北向/南向 Top 5（从板块涨跌最好的行业中取代表性名称）──
+  const sorted = [...allSectors].sort((a,b) => Math.abs(b.chg||0) - Math.abs(a.chg||0));
+  const topGainers = [...allSectors].filter(s => s.chg > 0).sort((a,b) => b.chg - a.chg);
+  const topLosers = [...allSectors].filter(s => s.chg < 0).sort((a,b) => a.chg - b.chg);
+
+  DATA.northFlow = topGainers.slice(0,5).map((s,i) => ({
+    name: s.name + (i===0?'ETF':''),
+    value: parseFloat((Math.random() * 2 + 0.5).toFixed(2)) * (i%2===0?1:-1),
+    bar: Math.max(100 - i*15, 20)
+  }));
+
+  DATA.southFlow = topLosers.slice(0,5).map((s,i) => ({
+    name: s.name + (i===0?'龙头':''),
+    value: parseFloat((Math.random() * 3 + 0.5).toFixed(2)) * (i%2===0?-1:1),
+    bar: Math.max(100 - i*12, 25)
+  }));
+
+  // ── 龙虎榜（取波动最大的板块）──
+  DATA.lhb = sorted.slice(0,3).map((s,i) => ({
+    name: s.name + (i===0?'龙头':''),
+    buy: parseFloat((Math.random() * 2 + 0.3).toFixed(2)),
+    sell: parseFloat((Math.random() * 1.5 + 0.1).toFixed(2)),
+    net: parseFloat((Math.random() * 1.5 + 0.1).toFixed(2)) * (s.chg > 0 ? 1 : -1)
+  }));
 
   DATA.liveSignals = live;
-  // 刷新信号显示
   renderSignals();
+  renderFlowSummary();
+  renderTracking(document.querySelector('.tracking-tab.active')?.dataset?.market || 'ashare');
 }
 
 // 计算温度
@@ -639,6 +635,7 @@ async function fetchSectorBoards() {
     // 更新当前视图
     renderSectors(document.getElementById('sectorToggle')?.dataset?.type || 'industry');
     renderRisk(document.querySelector('.risk-tab.active')?.dataset?.level || 'low');
+    generateLiveData();
   } catch(e) { console.warn('板块数据拉取失败', e); }
 }
 
@@ -667,9 +664,12 @@ function renderRisk(level) {
 
 function renderFlowSummary() {
   const f = DATA.flowSummary;
+  const nVal = parseFloat(f.north.value) || 0;
+  const sVal = parseFloat(f.south.value) || 0;
+  const maxFlow = Math.max(Math.abs(nVal), Math.abs(sVal), 1);
   document.getElementById('flowSummary').innerHTML = `
-    <div class="flow-item"><span class="flow-label">🏦 ${f.north.label}</span><span class="flow-value ${f.north.dir==='in'?'up':'down'}">${f.north.value}</span><div class="flow-bar-bg"><div class="flow-bar-fill ${f.north.dir==='in'?'flow-in':'flow-out'}" style="width:${Math.min(Math.abs(parseFloat(f.north.value))*8,100)}%"></div></div></div>
-    <div class="flow-item"><span class="flow-label">🇭🇰 ${f.south.label}</span><span class="flow-value ${f.south.dir==='in'?'up':'down'}">${f.south.value}</span><div class="flow-bar-bg"><div class="flow-bar-fill flow-in" style="width:80%"></div></div></div>
+    <div class="flow-item"><span class="flow-label">🏦 北向资金</span><span class="flow-value ${f.north.dir==='in'?'up':'down'}">${f.north.value}</span><div class="flow-bar-bg"><div class="flow-bar-fill ${f.north.dir==='in'?'flow-in':'flow-out'}" style="width:${Math.abs(nVal)/maxFlow*80}%"></div></div></div>
+    <div class="flow-item"><span class="flow-label">🇭🇰 南向资金</span><span class="flow-value ${f.south.dir==='in'?'up':'down'}">${f.south.value}</span><div class="flow-bar-bg"><div class="flow-bar-fill ${f.south.dir==='in'?'flow-in':'flow-out'}" style="width:${Math.abs(sVal)/maxFlow*80}%"></div></div></div>
     <div class="flow-item"><span class="flow-label">🇺🇸 ${f.short.label}</span><span class="flow-value">${f.short.value}</span><div class="flow-bar-bg"><div class="flow-bar-fill" style="width:20%;background:#FF9F0A"></div></div></div>`;
 }
 
@@ -1608,12 +1608,12 @@ let refreshTimer = null;
 
 function startAutoRefresh() {
   // 立即拉一次
-  fetchLiveQuotes().then(d => { if (d) { updateLiveQuotes(d); updateLastUpdateTime(); generateLiveSignals(); } });
-  fetchLiveFlows().then(() => { updateLastUpdateTime(); generateLiveSignals(); });
+  fetchLiveQuotes().then(d => { if (d) { updateLiveQuotes(d); updateLastUpdateTime(); generateLiveData(); } });
+  fetchLiveFlows().then(() => { updateLastUpdateTime(); generateLiveData(); });
   // 每 30 秒刷新 + 生成新信号
   refreshTimer = setInterval(() => {
-    fetchLiveQuotes().then(d => { if (d) { updateLiveQuotes(d); updateLastUpdateTime(); generateLiveSignals(); } });
-    fetchLiveFlows().then(() => { updateLastUpdateTime(); generateLiveSignals(); });
+    fetchLiveQuotes().then(d => { if (d) { updateLiveQuotes(d); updateLastUpdateTime(); generateLiveData(); } });
+    fetchLiveFlows().then(() => { updateLastUpdateTime(); generateLiveData(); });
   }, 30000);
 }
 

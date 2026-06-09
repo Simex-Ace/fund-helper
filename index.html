@@ -156,6 +156,10 @@ body{font-family:-apple-system,PingFang SC,Helvetica Neue,sans-serif;background:
 .detail-perf-item{padding:10px;border-radius:10px;background:var(--bg);text-align:center}
 .detail-perf-item .perf-label{font-size:11px;color:var(--text-secondary);margin-bottom:4px}
 .detail-perf-item .perf-value{font-size:16px;font-weight:700}
+.perf-tabs{display:flex;gap:6px;margin-top:8px}
+.perf-tab{flex:1;text-align:center;padding:6px 0;border-radius:8px;font-size:12px;color:var(--text-secondary);background:var(--bg);cursor:pointer;transition:all .2s}
+.perf-tab.active{background:var(--primary);color:#fff;font-weight:600}
+
 .watch-search{margin-bottom:12px;position:relative}
 .watch-search input{width:100%;padding:10px 14px;border-radius:12px;border:1px solid var(--border);background:var(--bg);font-size:14px;outline:none;transition:border .2s}
 .watch-search input:focus{border-color:var(--primary)}
@@ -362,15 +366,13 @@ body{font-family:-apple-system,PingFang SC,Helvetica Neue,sans-serif;background:
         <div><div class="detail-price" id="detPrice"></div><div class="detail-chg" id="detChg"></div></div>
       </div>
       <div style="font-size:12px;color:var(--text-secondary);margin-bottom:8px">多日涨跌幅</div>
-      <div class="detail-perf" id="detPerf">
-        <div class="detail-perf-item"><div class="perf-label">今日</div><div class="perf-value" id="perf1d">--</div></div>
-        <div class="detail-perf-item"><div class="perf-label">昨日</div><div class="perf-value" id="perfYesterday">--</div></div>
-        <div class="detail-perf-item"><div class="perf-label">近5日</div><div class="perf-value" id="perf5d">--</div></div>
-        <div class="detail-perf-item"><div class="perf-label">近10日</div><div class="perf-value" id="perf10d">--</div></div>
-        <div class="detail-perf-item"><div class="perf-label">近20日</div><div class="perf-value" id="perf20d">--</div></div>
-        <div class="detail-perf-item"><div class="perf-label">近60日</div><div class="perf-value" id="perf60d">--</div></div>
-        <div class="detail-perf-item"><div class="perf-label">年初至今</div><div class="perf-value" id="perfYtd">--</div></div>
+      <div class="perf-tabs" id="perfTabs">
+        <span class="perf-tab active" data-range="week">周</span>
+        <span class="perf-tab" data-range="month">月</span>
+        <span class="perf-tab" data-range="quarter">季度</span>
+        <span class="perf-tab" data-range="year">年</span>
       </div>
+      <div class="detail-perf" id="detPerf"></div>
       <div style="margin-top:8px"><div id="perfChart" style="height:180px;width:100%"></div></div>
     </div>
   </div>
@@ -1002,21 +1004,24 @@ function openDetail(w) {
   fetchMultiDayPerf(w.code);
 }
 
-function fetchMultiDayPerf(code) {
-  // 重置显示
-  ['perf1d','perfYesterday','perf5d','perf10d','perf20d','perf60d','perfYtd'].forEach(id => {
-    const el = document.getElementById(id);
-    if (el) { el.textContent = '...'; el.className = 'perf-value'; }
-  });
-  const chartContainer = document.getElementById('perfChart');
-  if (chartContainer) chartContainer.innerHTML = '';
+// ============================================================
+// 多日涨跌幅 — Tab 切换 (周/月/季度/年)
+// ============================================================
+let _perfData = null;        // 原始数据缓存
+let _currentRange = 'week';  // 当前 Tab
 
-  // 基金不拉多日数据
+function fetchMultiDayPerf(code) {
+  _perfData = null;
+  _currentRange = 'week';
+  document.getElementById('detPerf').innerHTML = '<div style="grid-column:1/-1;text-align:center;color:var(--text-tertiary);padding:12px;font-size:12px">加载中…</div>';
+  document.getElementById('perfChart').innerHTML = '';
+
+  // Tab 高亮重置
+  document.querySelectorAll('.perf-tab').forEach(t => t.classList.toggle('active', t.dataset.range === 'week'));
+
+  // 基金跳过
   if (code.length === 6 && !code.startsWith('sh') && !code.startsWith('sz') && !code.startsWith('hk') && !code.startsWith('us')) {
-    ['perf1d','perfYesterday','perf5d','perf10d','perf20d','perf60d','perfYtd'].forEach(id => {
-      const el = document.getElementById(id);
-      if (el) { el.textContent = '--'; el.className = 'perf-value'; }
-    });
+    document.getElementById('detPerf').innerHTML = '<div style="grid-column:1/-1;text-align:center;color:var(--text-tertiary);padding:12px;font-size:12px">基金暂无多日数据</div>';
     return;
   }
 
@@ -1031,7 +1036,6 @@ function fetchMultiDayPerf(code) {
     delete window[key];
     try {
       if (typeof raw === 'string') {
-        // 清洗数据: 去掉 v_xxx=" 前缀 和 " 后缀
         let cleaned = raw;
         const m = raw.match(/^v_\w+="(.*)"$/);
         if (m) cleaned = m[1];
@@ -1040,16 +1044,13 @@ function fetchMultiDayPerf(code) {
         const prevClose = parseFloat(parts[4]) || 0;
 
         if (parts.length > 40) {
-          // 第32字段是涨跌额，需要从price/prevClose算百分比
           const todayChg = price && prevClose ? ((price - prevClose) / prevClose * 100) : 0;
-          // 第33字段可能是涨跌幅%，校验使用
           const field33 = parseFloat(parts[33]);
           const todayChgFinal = (field33 && Math.abs(field33) < 30) ? field33 : todayChg;
-          // 第34字段可能是昨日涨跌幅%（部分股票有）
           const field34 = parseFloat(parts[34]);
           const yesterdayChg = (field34 && Math.abs(field34) < 30) ? field34 : null;
 
-          const perfData = {
+          _perfData = {
             'perf1d': todayChgFinal,
             'perfYesterday': yesterdayChg,
             'perf5d': parseFloat(parts[63]) || null,
@@ -1058,55 +1059,59 @@ function fetchMultiDayPerf(code) {
             'perf60d': parseFloat(parts[66]) || null,
             'perfYtd': parseFloat(parts[67]) || null
           };
-
-          Object.entries(perfData).forEach(([id, val]) => {
-            const el = document.getElementById(id);
-            if (el && val !== null && !isNaN(val)) {
-              el.textContent = (val > 0 ? '+' : '') + val.toFixed(2) + '%';
-              el.className = 'perf-value ' + (val >= 0 ? 'up' : 'down');
-            } else if (el) {
-              el.textContent = '--';
-              el.className = 'perf-value';
-            }
-          });
-
-          renderPerfChart(perfData);
+          renderPerfRange(_currentRange);
+          return;
         }
       }
-    } catch(e) {
-      // 解析失败，显示--
-      ['perf1d','perfYesterday','perf5d','perf10d','perf20d','perf60d','perfYtd'].forEach(id => {
-        const el = document.getElementById(id);
-        if (el) { el.textContent = '--'; el.className = 'perf-value'; }
-      });
-    }
+    } catch(e) {}
+    document.getElementById('detPerf').innerHTML = '<div style="grid-column:1/-1;text-align:center;color:var(--text-tertiary);padding:12px;font-size:12px">暂无数据</div>';
     if (script.parentNode) script.parentNode.removeChild(script);
   };
 
-  script.onerror = () => {
-    ['perf1d','perfYesterday','perf5d','perf10d','perf20d','perf60d','perfYtd'].forEach(id => {
-      const el = document.getElementById(id);
-      if (el) { el.textContent = '--'; el.className = 'perf-value'; }
-    });
-  };
+  script.onerror = () => { document.getElementById('detPerf').innerHTML = '<div style="grid-column:1/-1;text-align:center;color:var(--text-tertiary);padding:12px;font-size:12px">加载失败</div>'; };
 
   script.src = `https://web.sqt.gtimg.cn/q=${code}&t=${Date.now()}`;
   document.head.appendChild(script);
 }
 
-function renderPerfChart(perfData) {
+// 各 Tab 的数据映射
+const RANGE_MAP = {
+  week:   { cols:2, items:[ {label:'今日',  key:'perf1d'},  {label:'昨日', key:'perfYesterday'}, {label:'近5日', key:'perf5d'} ] },
+  month:  { cols:3, items:[ {label:'近5日', key:'perf5d'},  {label:'近10日',key:'perf10d'},      {label:'近20日',key:'perf20d'} ] },
+  quarter:{ cols:2, items:[ {label:'近20日',key:'perf20d'}, {label:'近60日',key:'perf60d'} ] },
+  year:   { cols:1, items:[ {label:'年初至今',key:'perfYtd'} ] }
+};
+
+function renderPerfRange(range) {
+  const cfg = RANGE_MAP[range];
+  if (!cfg || !_perfData) return;
+  _currentRange = range;
+
+  // 构建有效数据
+  const pts = cfg.items.map(i => ({ label:i.label, val:_perfData[i.key] }));
+
+  // 渲染网格
+  const grid = document.getElementById('detPerf');
+  grid.style.gridTemplateColumns = `repeat(${cfg.cols},1fr)`;
+  grid.innerHTML = pts.map(p => {
+    const v = (p.val !== null && !isNaN(p.val)) ? p.val : null;
+    const cls = v !== null ? (v >= 0 ? 'up' : 'down') : '';
+    const txt = v !== null ? (v > 0 ? '+' : '') + v.toFixed(2) + '%' : '--';
+    return `<div class="detail-perf-item"><div class="perf-label">${p.label}</div><div class="perf-value ${cls}">${txt}</div></div>`;
+  }).join('');
+
+  // 渲染折线图
+  const chartPts = pts.filter(p => p.val !== null && !isNaN(p.val));
+  renderLineChart(chartPts);
+}
+
+// ============================================================
+// 折线图 SVG
+// ============================================================
+function renderLineChart(points) {
   const container = document.getElementById('perfChart');
   if (!container) return;
-  const items = [
-    { label:'今日', key:'perf1d' },
-    { label:'5日', key:'perf5d' },
-    { label:'10日', key:'perf10d' },
-    { label:'20日', key:'perf20d' },
-    { label:'60日', key:'perf60d' },
-    { label:'年初', key:'perfYtd' }
-  ];
-  const points = items.map(i => ({ label:i.label, val:perfData[i.key] })).filter(v => v.val !== null && !isNaN(v.val));
-  if (!points.length) { container.innerHTML = '<div style="text-align:center;color:var(--text-tertiary);font-size:12px;padding:20px">暂无多日数据</div>'; return; }
+  if (!points.length) { container.innerHTML = '<div style="text-align:center;color:var(--text-tertiary);font-size:12px;padding:20px">暂无数据</div>'; return; }
 
   const W = container.clientWidth || 300;
   const H = 180;
@@ -1114,69 +1119,87 @@ function renderPerfChart(perfData) {
   const cw = W - pad.left - pad.right;
   const ch = H - pad.top - pad.bottom;
 
-  // 计算 y 范围
+  // 只有一个数据点 → 只显示数值
+  if (points.length === 1) {
+    const v = points[0].val;
+    const c = v >= 0 ? '#FF3B30' : '#34C759';
+    container.innerHTML = `<div style="display:flex;flex-direction:column;align-items:center;justify-content:center;height:100%;color:${c};font-size:28px;font-weight:700">${v > 0 ? '+' : ''}${v.toFixed(2)}%<span style="font-size:12px;color:var(--text-secondary);font-weight:400;margin-top:4px">${points[0].label}</span></div>`;
+    return;
+  }
+
   const vals = points.map(p => p.val);
-  const minV = Math.min(...vals, 0);
-  const maxV = Math.max(...vals, 0);
+  let minV = Math.min(...vals);
+  let maxV = Math.max(...vals);
+
+  // 如果全正或全负，用 min(0, minV) 和 max(0, maxV) 让 0 轴包含在内
+  if (minV > 0) { minV = 0; }
+  if (maxV < 0) { maxV = 0; }
+
   const range = Math.max(maxV - minV, 0.5);
-  const yPad = range * 0.1;
+  const yPad = range * 0.15;
   const yMin = minV - yPad;
   const yMax = maxV + yPad;
   const yRange = yMax - yMin;
 
-  const stepX = points.length > 1 ? cw / (points.length - 1) : cw / 2;
+  const stepX = cw / (points.length - 1);
   const yScale = (v) => pad.top + ch - ((v - yMin) / yRange * ch);
   const xScale = (i) => pad.left + i * stepX;
 
-  // 坐标数据
   const coords = points.map((p, i) => ({ x: xScale(i), y: yScale(p.val), val: p.val, label: p.label }));
 
-  let svg = `<svg width="${W}" height="${H}" viewBox="0 0 ${W} ${H}" style="display:block;font-family:inherit">`;
+  let S = `<svg width="${W}" height="${H}" viewBox="0 0 ${W} ${H}" style="display:block;font-family:inherit">`;
 
   // 0 轴参考线
   const y0 = yScale(0);
   if (y0 >= pad.top && y0 <= pad.top + ch) {
-    svg += `<line x1="${pad.left}" y1="${y0}" x2="${pad.left + cw}" y2="${y0}" stroke="#E0E2E6" stroke-dasharray="4,3" stroke-width="1"/>`;
+    S += `<line x1="${pad.left}" y1="${y0}" x2="${pad.left + cw}" y2="${y0}" stroke="#E0E2E6" stroke-dasharray="4,3" stroke-width="1"/>`;
   }
 
-  // Y轴刻度线（最多5条）
-  const tickCount = 5;
+  // Y 轴刻度
+  const tickCount = 4;
   for (let t = 0; t <= tickCount; t++) {
     const yVal = yMin + (yRange * t / tickCount);
     const yPos = yScale(yVal);
     if (yPos >= pad.top && yPos <= pad.top + ch) {
-      svg += `<line x1="${pad.left}" y1="${yPos}" x2="${pad.left + cw}" y2="${yPos}" stroke="#F0F1F3" stroke-width="1"/>`;
-      svg += `<text x="${pad.left + cw + 2}" y="${yPos + 3}" font-size="9" fill="#B0B6C2" text-anchor="start">${yVal > 0 ? '+' : ''}${yVal.toFixed(1)}%</text>`;
+      S += `<line x1="${pad.left}" y1="${yPos}" x2="${pad.left + cw}" y2="${yPos}" stroke="#F0F1F3" stroke-width="1"/>`;
+      S += `<text x="${pad.left + cw + 2}" y="${yPos + 3}" font-size="9" fill="#B0B6C2" text-anchor="start">${yVal > 0 ? '+' : ''}${yVal.toFixed(1)}%</text>`;
     }
   }
 
-  // 折线路径
+  // 折线 + 渐变填充
   if (coords.length >= 2) {
     const d = coords.map((c, i) => `${i === 0 ? 'M' : 'L'}${c.x},${c.y}`).join(' ');
-    // 判断整体趋势颜色
-    const lastVal = coords[coords.length - 1].val;
-    const firstVal = coords[0].val;
-    const trendUp = lastVal >= firstVal;
+    const lastV = coords[coords.length - 1].val;
+    const firstV = coords[0].val;
+    const trendUp = lastV >= firstV;
     const lineColor = trendUp ? '#FF3B30' : '#34C759';
-    svg += `<path d="${d}" fill="none" stroke="${lineColor}" stroke-width="2" stroke-linejoin="round" stroke-linecap="round"/>`;
-    // 渐变填充区域
+
+    S += `<path d="${d}" fill="none" stroke="${lineColor}" stroke-width="2" stroke-linejoin="round" stroke-linecap="round"/>`;
     const fillD = `${d} L${coords[coords.length - 1].x},${y0} L${coords[0].x},${y0} Z`;
-    svg += `<defs><linearGradient id="perfGrad" x1="0" y1="0" x2="0" y2="1"><stop offset="0%" stop-color="${lineColor}" stop-opacity="0.15"/><stop offset="100%" stop-color="${lineColor}" stop-opacity="0.01"/></linearGradient></defs>`;
-    svg += `<path d="${fillD}" fill="url(#perfGrad)" opacity="0.8"/>`;
+    S += `<defs><linearGradient id="pg" x1="0" y1="0" x2="0" y2="1"><stop offset="0%" stop-color="${lineColor}" stop-opacity="0.15"/><stop offset="100%" stop-color="${lineColor}" stop-opacity="0.01"/></linearGradient></defs>`;
+    S += `<path d="${fillD}" fill="url(#pg)" opacity="0.8"/>`;
   }
 
-  // 数据点 & X轴标签
+  // 数据点 & 标签
   coords.forEach((c, i) => {
     const dotColor = c.val >= 0 ? '#FF3B30' : '#34C759';
-    svg += `<circle cx="${c.x}" cy="${c.y}" r="3.5" fill="#fff" stroke="${dotColor}" stroke-width="2"/>`;
-    svg += `<text x="${c.x}" y="${pad.top + ch + 14}" font-size="10" fill="#8E94A0" text-anchor="${i === 0 ? 'start' : i === coords.length - 1 ? 'end' : 'middle'}">${c.label}</text>`;
-    // 数值标签
-    svg += `<text x="${c.x}" y="${c.val >= 0 ? c.y - 8 : c.y + 14}" font-size="10" fill="${dotColor}" text-anchor="middle" font-weight="600">${c.val > 0 ? '+' : ''}${c.val.toFixed(1)}%</text>`;
+    S += `<circle cx="${c.x}" cy="${c.y}" r="3.5" fill="#fff" stroke="${dotColor}" stroke-width="2"/>`;
+    S += `<text x="${c.x}" y="${pad.top + ch + 14}" font-size="10" fill="#8E94A0" text-anchor="${i === 0 ? 'start' : i === coords.length - 1 ? 'end' : 'middle'}">${c.label}</text>`;
+    S += `<text x="${c.x}" y="${c.val >= 0 ? c.y - 8 : c.y + 14}" font-size="10" fill="${dotColor}" text-anchor="middle" font-weight="600">${c.val > 0 ? '+' : ''}${c.val.toFixed(1)}%</text>`;
   });
 
-  svg += '</svg>';
-  container.innerHTML = svg;
+  S += '</svg>';
+  container.innerHTML = S;
 }
+
+// Tab 点击事件
+document.getElementById('perfTabs').addEventListener('click', function(e) {
+  const tab = e.target.closest('.perf-tab');
+  if (!tab || tab.classList.contains('active')) return;
+  document.querySelectorAll('.perf-tab').forEach(t => t.classList.remove('active'));
+  tab.classList.add('active');
+  renderPerfRange(tab.dataset.range);
+});
 
 document.getElementById('detailClose').addEventListener('click', () => document.getElementById('detailModal').classList.remove('show'));
 document.getElementById('detailModal').addEventListener('click', function(e) { if (e.target === this) this.classList.remove('show'); });

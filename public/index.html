@@ -650,8 +650,8 @@ async function fetchSectorBoards() {
 
     renderSectors(document.getElementById('sectorToggle')?.dataset?.type || 'industry');
     renderRisk(document.querySelector('.risk-tab.active')?.dataset?.level || 'low');
-    generateLiveData();
   } catch(e) { console.warn('板块数据拉取失败', e); }
+  generateLiveData();
 }
 
 function renderSectors(type) {
@@ -892,12 +892,13 @@ document.addEventListener('DOMContentLoaded', function() {
   // 初始渲染
   renderMarketBar();
   renderTemp();
-  fetchSectorBoards();  // 异步拉取，完成后自动渲染
+  generateLiveData();
   renderFlowSummary();
   renderTracking('ashare');
   renderSignals();
   updateSignalBadge();
   renderWatchlist('all');
+  fetchSectorBoards();
 
   // Tab 切换
   document.querySelectorAll('.tab-item').forEach(el => {

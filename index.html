@@ -662,8 +662,9 @@ async function fetchSectorBoards() {
     // 更新当前视图
     renderSectors(document.getElementById('sectorToggle')?.dataset?.type || 'industry');
     renderRisk(document.querySelector('.risk-tab.active')?.dataset?.level || 'low');
-    generateLiveData();
   } catch(e) { console.warn('板块数据拉取失败', e); }
+  // 无论板块API是否成功都要生成衍生数据
+  generateLiveData();
 }
 
 function renderSectors(type) {
@@ -904,12 +905,13 @@ document.addEventListener('DOMContentLoaded', function() {
   // 初始渲染
   renderMarketBar();
   renderTemp();
-  fetchSectorBoards();  // 异步拉取，完成后自动渲染
+  generateLiveData();    // 用初始指数数据先生成
   renderFlowSummary();
   renderTracking('ashare');
   renderSignals();
   updateSignalBadge();
   renderWatchlist('all');
+  fetchSectorBoards();  // 异步拉板块，完成后会再调 generateLiveData
 
   // Tab 切换
   document.querySelectorAll('.tab-item').forEach(el => {

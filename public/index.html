@@ -457,7 +457,8 @@ function generateLiveData() {
     }
   });
 
-  const northFlow = parseFloat(DATA.flowSummary?.north?.value) || 0;
+  const northValStr = (DATA.flowSummary?.north?.value || '0').replace(/[^0-9.\-+]/g, '');
+  const northFlow = parseFloat(northValStr) || 0;
   DATA.flowSummary.north.dir = northFlow >= 0 ? 'in' : 'out';
 
   DATA.flowCumulative.north.day = northFlow;

@@ -461,8 +461,9 @@ function generateLiveData() {
   });
 
   // ── 主力风向标 ──
-  const northFlow = parseFloat(DATA.flowSummary?.north?.value) || 0;
-  DATA.flowSummary.north.label = '北向资金(实时)';
+  // 从 flowSummary 的字符串值（如 "+5.20亿"）中提取数字
+  const northValStr = (DATA.flowSummary?.north?.value || '0').replace(/[^0-9.\-+]/g, '');
+  const northFlow = parseFloat(northValStr) || 0;
   DATA.flowSummary.north.dir = northFlow >= 0 ? 'in' : 'out';
 
   // ── 累计流向（模拟周/月累计）──

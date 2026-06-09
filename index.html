@@ -403,9 +403,9 @@ const DATA = {
     { name:'国企指数', code:'hkHSCEI', price:8850.30, chgPct:-1.50, market:'hk' },
     { name:'恒生科技', code:'hkHSTECH', price:4950.60, chgPct:-2.10, market:'hk' },
     // 美股
-    { name:'标普500', code:'usSPX', price:0, chgPct:0, market:'us' },
-    { name:'纳斯达克', code:'usIXIC', price:0, chgPct:0, market:'us' },
-    { name:'道琼斯', code:'usDJI', price:0, chgPct:0, market:'us' }
+    { name:'标普500', code:'US.SPX', price:0, chgPct:0, market:'us' },
+    { name:'纳斯达克', code:'US.IXIC', price:0, chgPct:0, market:'us' },
+    { name:'道琼斯', code:'US.DJI', price:0, chgPct:0, market:'us' }
   ],
   // 申万一级行业 Top 10 by 5日涨幅
   sectors: [
@@ -1510,9 +1510,9 @@ function fetchLiveQuotes() {
       codes.forEach(c => {
         // 尝试多种 key 格式
         const keys = ['v_' + c.replace(/\./g,'_')];
-        // 对 us 开头的代码，也尝试 v_us_XXX 格式（API可能在点号处加下划线）
-        if (c.startsWith('us') && c.length > 4) {
-          keys.push('v_us_' + c.slice(2));
+        // 对 US 开头的带点代码，额外尝试去掉点号的格式
+        if (c.includes('.') && c.length > 4) {
+          keys.push('v_' + c.replace(/\./g,''));
         }
         for (const key of keys) {
           if (window[key] && typeof window[key] === 'string') {

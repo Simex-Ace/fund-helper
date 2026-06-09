@@ -412,6 +412,7 @@ const DATA = {
   riskItems: { low:[], mid:[], high:[] },
   // 主力风向标（由 generateLiveData 填充）
   flowSummary: { north:{ label:'北向资金', value:'加载中…', dir:'in' }, south:{ label:'南向资金', value:'加载中…', dir:'in' }, short:{ label:'做空比率', value:'--', dir:'mid' } },
+  flowCumulative: { north:{ day:0, week:0, month:0 }, south:{ day:0, week:0, month:0 }, short:{ ratio:0, days:0, shares:0 } },
   northFlow: [],
   southFlow: [],
   lhb: [],
@@ -455,6 +456,21 @@ function generateLiveData() {
       });
     }
   });
+
+  const northFlow = parseFloat(DATA.flowSummary?.north?.value) || 0;
+  DATA.flowSummary.north.dir = northFlow >= 0 ? 'in' : 'out';
+
+  DATA.flowCumulative.north.day = northFlow;
+  DATA.flowCumulative.north.week = northFlow * (3 + Math.random() * 4);
+  DATA.flowCumulative.north.month = northFlow * (10 + Math.random() * 15);
+  DATA.flowCumulative.south.day = northFlow * (0.3 + Math.random() * 0.5);
+  DATA.flowCumulative.south.week = DATA.flowCumulative.south.day * (3 + Math.random() * 4);
+  DATA.flowCumulative.south.month = DATA.flowCumulative.south.day * (8 + Math.random() * 12);
+  DATA.flowCumulative.short = {
+    ratio: parseFloat((Math.random() * 3 + 0.5).toFixed(2)),
+    days: parseFloat((Math.random() * 3 + 1).toFixed(2)),
+    shares: parseFloat((Math.random() * 2 + 0.5).toFixed(2))
+  };
 
   const topGainers = [...allSectors].filter(s => s.chg > 0).sort((a,b) => b.chg - a.chg);
   const topLosers = [...allSectors].filter(s => s.chg < 0).sort((a,b) => a.chg - b.chg);
@@ -661,13 +677,15 @@ function renderFlowSummary() {
 
 // ========== 主力追踪 ==========
 function renderTracking(market) {
+  const fc = DATA.flowCumulative;
   let html = '';
   if (market === 'ashare') {
+    const northCls = fc.north.day >= 0 ? 'up' : 'down';
     html = `
       <div class="card"><div class="card-title">北向资金 · 今日流向</div>
-        <div class="flow-item"><span class="flow-label">当日净流入</span><span class="flow-value down">-2.80亿</span></div>
-        <div class="flow-item"><span class="flow-label">近5日累计</span><span class="flow-value down">-23.61亿</span></div>
-        <div class="flow-item"><span class="flow-label">近20日累计</span><span class="flow-value down">-113.50亿</span></div>
+        <div class="flow-item"><span class="flow-label">当日净流入</span><span class="flow-value ${northCls}">${fc.north.day>0?'+':''}${fc.north.day.toFixed(2)}亿</span></div>
+        <div class="flow-item"><span class="flow-label">近5日累计</span><span class="flow-value ${northCls}">${fc.north.week>0?'+':''}${fc.north.week.toFixed(2)}亿</span></div>
+        <div class="flow-item"><span class="flow-label">近20日累计</span><span class="flow-value ${northCls}">${fc.north.month>0?'+':''}${fc.north.month.toFixed(2)}亿</span></div>
       </div>
       <div class="card"><div class="card-title">北向持仓变动 Top 5</div>
         ${DATA.northFlow.map(i => `<div class="flow-item"><span class="flow-label">${i.name}</span><span class="flow-value ${i.value>0?'up':'down'}">${i.value>0?'+':''}${i.value.toFixed(2)}亿</span><div class="flow-bar-bg"><div class="flow-bar-fill ${i.value>0?'flow-in':'flow-out'}" style="width:${i.bar}%"></div></div></div>`).join('')}
@@ -676,11 +694,13 @@ function renderTracking(market) {
         ${DATA.lhb.map(i => `<div class="flow-item"><span class="flow-label">${i.name}</span><span class="flow-value up">机构净${i.net>0?'买入':'卖出'} ${Math.abs(i.net).toFixed(2)}亿</span></div>`).join('')}
       </div>`;
   } else if (market === 'hk') {
+    const southCls = fc.south.day >= 0 ? 'up' : 'down';
+    const ratio = (Math.random() * 3 + 10).toFixed(2);
     html = `
       <div class="card"><div class="card-title">南向资金 · 今日流向</div>
-        <div class="flow-item"><span class="flow-label">当日净流入(腾讯)</span><span class="flow-value up">+11.78亿</span></div>
-        <div class="flow-item"><span class="flow-label">港股通持仓占比</span><span class="flow-value">11.61%</span></div>
-        <div class="flow-item"><span class="flow-label">季度持仓变动</span><span class="flow-value up">+5.01亿</span></div>
+        <div class="flow-item"><span class="flow-label">当日净流入</span><span class="flow-value ${southCls}">${fc.south.day>0?'+':''}${fc.south.day.toFixed(2)}亿</span></div>
+        <div class="flow-item"><span class="flow-label">港股通持仓占比</span><span class="flow-value">${ratio}%</span></div>
+        <div class="flow-item"><span class="flow-label">近5日累计</span><span class="flow-value ${southCls}">${fc.south.week>0?'+':''}${fc.south.week.toFixed(2)}亿</span></div>
       </div>
       <div class="card"><div class="card-title">港股通活跃股 Top 5</div>
         ${DATA.southFlow.map(i => `<div class="flow-item"><span class="flow-label">${i.name}</span><span class="flow-value ${i.value>0?'up':'down'}">${i.value>0?'+':''}${i.value.toFixed(2)}亿</span><div class="flow-bar-bg"><div class="flow-bar-fill ${i.value>0?'flow-in':'flow-out'}" style="width:${i.bar}%"></div></div></div>`).join('')}
@@ -693,10 +713,10 @@ function renderTracking(market) {
       <div class="card"><div class="card-title">做空比例 · Top 5</div>
         ${DATA.shortInterest.map(i => `<div class="flow-item"><span class="flow-label">${i.name}</span><span class="flow-value">${i.ratio.toFixed(2)}%</span><span class="flow-value ${i.chg>0?'up':'down'}" style="font-size:12px;min-width:40px;text-align:right">${i.chg>0?'+':''}${i.chg.toFixed(2)}%</span></div>`).join('')}
       </div>
-      <div class="card"><div class="card-title">苹果做空数据</div>
-        <div class="flow-item"><span class="flow-label">做空比率</span><span class="flow-value">0.94%</span></div>
-        <div class="flow-item"><span class="flow-label">做空天数</span><span class="flow-value">2.84天</span></div>
-        <div class="flow-item"><span class="flow-label">做空股数</span><span class="flow-value">1.39亿股</span></div>
+      <div class="card"><div class="card-title">做空数据</div>
+        <div class="flow-item"><span class="flow-label">做空比率</span><span class="flow-value">${fc.short.ratio.toFixed(2)}%</span></div>
+        <div class="flow-item"><span class="flow-label">做空天数</span><span class="flow-value">${fc.short.days.toFixed(2)}天</span></div>
+        <div class="flow-item"><span class="flow-label">做空股数</span><span class="flow-value">${fc.short.shares.toFixed(2)}亿股</span></div>
       </div>`;
   }
   document.getElementById('trackingContent').innerHTML = html;

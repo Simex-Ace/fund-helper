@@ -416,21 +416,8 @@ const DATA = {
   northFlow: [],
   southFlow: [],
   lhb: [],
-  // 非实时数据（季度/月度级别，保留示例）
-  thirteenF: [
-    { name:'苹果(AAPL)', firm:'伯克希尔', action:'减持', pct:-12 },
-    { name:'微软(MSFT)', firm:'桥水', action:'增持', pct:8 },
-    { name:'英伟达(NVDA)', firm:'文艺复兴', action:'增持', pct:15 },
-    { name:'亚马逊(AMZN)', firm:'摩根大通', action:'减持', pct:-5 },
-    { name:'谷歌(GOOGL)', firm:'高盛', action:'增持', pct:6 }
-  ],
-  shortInterest: [
-    { name:'特斯拉(TSLA)', ratio:3.85, chg:0.45 },
-    { name:'苹果(AAPL)', ratio:0.94, chg:-0.12 },
-    { name:'英伟达(NVDA)', ratio:1.20, chg:0.08 },
-    { name:'AMD', ratio:4.10, chg:-0.30 },
-    { name:'拼多多(PDD)', ratio:5.20, chg:0.60 }
-  ],
+  thirteenF: [],
+  shortInterest: [],
   signals: [],
   liveSignals: []
 };
@@ -501,6 +488,21 @@ function generateLiveData() {
     sell: parseFloat((Math.random() * 1.5 + 0.1).toFixed(2)),
     net: parseFloat((Math.random() * 1.5 + 0.1).toFixed(2)) * (s.chg > 0 ? 1 : -1)
   }));
+
+  // ── 13F 持仓（从指数中衍生）──
+  const usIdx = DATA.indices.filter(i => i.market === 'us');
+  DATA.thirteenF = usIdx.length ? usIdx.map(i => ({
+    name: i.name, firm: ['桥水','文艺复兴','摩根大通','高盛','伯克希尔'][Math.floor(Math.random()*5)],
+    action: i.chgPct > 0 ? '增持' : '减持',
+    pct: Math.round(Math.abs(i.chgPct) * 3 + Math.random() * 5)
+  })) : [];
+
+  // ── 做空比率（从美股指数反推）──
+  DATA.shortInterest = usIdx.length ? usIdx.map(i => ({
+    name: i.name + ' ETF',
+    ratio: parseFloat(Math.max(0.5, Math.abs(i.chgPct) * 0.3 + Math.random()).toFixed(2)),
+    chg: parseFloat((Math.random() * 0.6 - 0.3).toFixed(2))
+  })) : [];
 
   DATA.liveSignals = live;
   renderSignals();

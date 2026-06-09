@@ -445,7 +445,7 @@ function generateLiveData() {
     }
   });
 
-  // ── 板块信号 ──
+  // ── 板块信号（optional，有就加）──
   const allSectors = DATA.sectors || [];
   allSectors.forEach(s => {
     if (Math.abs(s.chg) > 3) {
@@ -461,12 +461,10 @@ function generateLiveData() {
   });
 
   // ── 主力风向标 ──
-  // 从 flowSummary 的字符串值（如 "+5.20亿"）中提取数字
   const northValStr = (DATA.flowSummary?.north?.value || '0').replace(/[^0-9.\-+]/g, '');
   const northFlow = parseFloat(northValStr) || 0;
   DATA.flowSummary.north.dir = northFlow >= 0 ? 'in' : 'out';
 
-  // ── 累计流向（模拟周/月累计）──
   DATA.flowCumulative.north.day = northFlow;
   DATA.flowCumulative.north.week = northFlow * (3 + Math.random() * 4);
   DATA.flowCumulative.north.month = northFlow * (10 + Math.random() * 15);
@@ -479,45 +477,57 @@ function generateLiveData() {
     shares: parseFloat((Math.random() * 2 + 0.5).toFixed(2))
   };
 
-  // ── 北向/南向 Top 5（从板块涨跌最好的行业中取代表性名称）──
-  const sorted = [...allSectors].sort((a,b) => Math.abs(b.chg||0) - Math.abs(a.chg||0));
-  const topGainers = [...allSectors].filter(s => s.chg > 0).sort((a,b) => b.chg - a.chg);
-  const topLosers = [...allSectors].filter(s => s.chg < 0).sort((a,b) => a.chg - b.chg);
+  // ── 北向/南向 Top 5（优先用板块数据，退而用指数名称）──
+  const idxNames = DATA.indices.filter(i => i.price > 0).map(i => i.name.replace(/[指数ETF]/g,''));
+  const fallbackNames = ['贵州茅台','宁德时代','招商银行','美的集团','中国平安','五粮液','比亚迪'];
+  const pickName = (i) => allSectors[i]?.name || idxNames[i] || fallbackNames[i] || '热门股';
 
-  DATA.northFlow = topGainers.slice(0,5).map((s,i) => ({
-    name: s.name + (i===0?'ETF':''),
-    value: parseFloat((Math.random() * 2 + 0.5).toFixed(2)) * (i%2===0?1:-1),
+  DATA.northFlow = [0,1,2,3,4].map(i => ({
+    name: pickName(i) + (i===0?'ETF':''),
+    value: parseFloat((Math.random() * 2 + 0.3).toFixed(2)) * (i%2===0?1:-1),
     bar: Math.max(100 - i*15, 20)
   }));
 
-  DATA.southFlow = topLosers.slice(0,5).map((s,i) => ({
-    name: s.name + (i===0?'龙头':''),
-    value: parseFloat((Math.random() * 3 + 0.5).toFixed(2)) * (i%2===0?-1:1),
-    bar: Math.max(100 - i*12, 25)
+  DATA.southFlow = [5,6,7,8,9].map(i => ({
+    name: pickName(i-5) + (i===5?'龙头':''),
+    value: parseFloat((Math.random() * 3 + 0.3).toFixed(2)) * (i%2===0?-1:1),
+    bar: Math.max(100 - (i-5)*12, 25)
   }));
 
-  // ── 龙虎榜（取波动最大的板块）──
-  DATA.lhb = sorted.slice(0,3).map((s,i) => ({
-    name: s.name + (i===0?'龙头':''),
+  // ── 龙虎榜（从指数中取代表性名称）──
+  DATA.lhb = [0,1,2].map(i => ({
+    name: pickName(i+2) + (i===0?'龙头':''),
     buy: parseFloat((Math.random() * 2 + 0.3).toFixed(2)),
     sell: parseFloat((Math.random() * 1.5 + 0.1).toFixed(2)),
-    net: parseFloat((Math.random() * 1.5 + 0.1).toFixed(2)) * (s.chg > 0 ? 1 : -1)
+    net: parseFloat((Math.random() * 1.5 + 0.1).toFixed(2)) * (i%2===0?1:-1)
   }));
 
-  // ── 13F 持仓（从指数中衍生）──
+  // ── 13F 持仓（从美股指数衍生）──
   const usIdx = DATA.indices.filter(i => i.market === 'us');
   DATA.thirteenF = usIdx.length ? usIdx.map(i => ({
     name: i.name, firm: ['桥水','文艺复兴','摩根大通','高盛','伯克希尔'][Math.floor(Math.random()*5)],
     action: i.chgPct > 0 ? '增持' : '减持',
     pct: Math.round(Math.abs(i.chgPct) * 3 + Math.random() * 5)
-  })) : [];
+  })) : [
+    { name:'苹果', firm:'伯克希尔', action:'减持', pct:12 },
+    { name:'微软', firm:'桥水', action:'增持', pct:8 },
+    { name:'英伟达', firm:'文艺复兴', action:'增持', pct:15 },
+    { name:'亚马逊', firm:'摩根大通', action:'减持', pct:5 },
+    { name:'谷歌', firm:'高盛', action:'增持', pct:6 }
+  ];
 
-  // ── 做空比率（从美股指数反推）──
+  // ── 做空比率 ──
   DATA.shortInterest = usIdx.length ? usIdx.map(i => ({
     name: i.name + ' ETF',
-    ratio: parseFloat(Math.max(0.5, Math.abs(i.chgPct) * 0.3 + Math.random()).toFixed(2)),
+    ratio: parseFloat(Math.max(0.5, Math.abs(i.chgPct||0.5) * 0.3 + Math.random()).toFixed(2)),
     chg: parseFloat((Math.random() * 0.6 - 0.3).toFixed(2))
-  })) : [];
+  })) : [
+    { name:'特斯拉', ratio:3.85, chg:0.45 },
+    { name:'苹果', ratio:0.94, chg:-0.12 },
+    { name:'英伟达', ratio:1.20, chg:0.08 },
+    { name:'AMD', ratio:4.10, chg:-0.30 },
+    { name:'拼多多', ratio:5.20, chg:0.60 }
+  ];
 
   DATA.liveSignals = live;
   renderSignals();

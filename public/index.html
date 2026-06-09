@@ -52,6 +52,10 @@ body{font-family:-apple-system,PingFang SC,Helvetica Neue,sans-serif;background:
 .signal-light .score{font-size:36px;line-height:1}
 .signal-light .label{font-size:14px;opacity:.9;margin-top:2px}
 .temp-desc{font-size:13px;color:var(--text-secondary);text-align:center;max-width:280px}
+.m-status{font-size:9px;padding:1px 5px;border-radius:4px;font-weight:400}
+.m-status.open{background:#E8F5E9;color:#34C759}
+.m-status.closed{background:#F5F5F5;color:#999}
+.m-status.holiday{background:#FFF3E0;color:#FF9F0A}
 
 /* Market overview bar */
 .market-bar{display:flex;gap:8px;margin-bottom:12px}
@@ -569,16 +573,41 @@ function calcTemp() {
 // 渲染函数
 // ============================================================
 
+function getMarketStatus(market) {
+  const now = new Date();
+  const h = now.getHours(), m = now.getMinutes();
+  const day = now.getDay();
+  if (day === 0 || day === 6) return { text:'休市', cls:'holiday' };
+  const t = h * 60 + m;
+  let open = false;
+  switch (market) {
+    case 'ashare': open = (t >= 570 && t <= 690) || (t >= 780 && t <= 900); break;
+    case 'hk':     open = (t >= 570 && t <= 720) || (t >= 780 && t <= 960); break;
+    case 'us': {
+      const isEDT = now.getMonth() >= 2 && now.getMonth() <= 9;
+      const openM = isEDT ? 1290 : 1350;
+      const closeM = isEDT ? 240 : 300;
+      if (day === 1) open = t < closeM;
+      else if (day >= 2 && day <= 5) open = (t >= openM || t < closeM);
+      else if (day === 6) open = t < closeM;
+      else return { text:'休市', cls:'holiday' };
+      break;
+    }
+  }
+  return open ? { text:'交易中', cls:'open' } : { text:'已收盘', cls:'closed' };
+}
+
 function renderMarketBar() {
   const d = DATA.indices;
   const groups = [
-    { label:'A股', items:d.filter(x=>x.market==='ashare') },
-    { label:'港股', items:d.filter(x=>x.market==='hk') },
-    { label:'美股', items:d.filter(x=>x.market==='us') }
+    { label:'A股', market:'ashare', items:d.filter(x=>x.market==='ashare') },
+    { label:'港股', market:'hk', items:d.filter(x=>x.market==='hk') },
+    { label:'美股', market:'us', items:d.filter(x=>x.market==='us') }
   ];
-  document.getElementById('marketBar').innerHTML = groups.map(g => `
-    <div style="flex:1">
-      <div style="font-size:11px;color:var(--text-secondary);font-weight:600;margin-bottom:6px;text-align:center;letter-spacing:1px">${g.label}</div>
+  document.getElementById('marketBar').innerHTML = groups.map(g => {
+    const st = getMarketStatus(g.market);
+    return `<div style="flex:1">
+      <div style="font-size:11px;color:var(--text-secondary);font-weight:600;margin-bottom:6px;text-align:center;letter-spacing:1px;display:flex;align-items:center;justify-content:center;gap:4px">${g.label}<span class="m-status ${st.cls}">${st.text}</span></div>
       ${g.items.map(v => {
         const p = typeof v.chgPct === 'number' ? v.chgPct : 0;
         const cls = p>0?'up':'down';
@@ -588,8 +617,8 @@ function renderMarketBar() {
           <div class="market-chg ${cls}">${p>0?'+':''}${p.toFixed(2)}%</div>
         </div>`;
       }).join('')}
-    </div>
-  `).join('');
+    </div>`;
+  }).join('');
 }
 
 function renderTemp() {

@@ -1508,21 +1508,29 @@ function fetchLiveQuotes() {
       cleanup();
       const result = {};
       codes.forEach(c => {
-        const key = 'v_' + c.replace(/\./g,'_');
-        if (window[key] && typeof window[key] === 'string') {
-          const parts = window[key].replace(/^v_\w+="/,'').replace(/"$/,'').split('~');
-          if (parts.length > 3) {
-            result[c] = {
-              name: parts[1] || c,
-              price: parseFloat(parts[3]) || 0,
-              prevClose: parseFloat(parts[4]) || 0,
-              chgPct: parts[32] ? parseFloat(parts[32]) : 0
-            };
-            if (result[c].prevClose && result[c].price) {
-              result[c].chgPct = ((result[c].price - result[c].prevClose) / result[c].prevClose * 100);
+        // 尝试多种 key 格式
+        const keys = ['v_' + c.replace(/\./g,'_')];
+        // 对 us 开头的代码，也尝试 v_us_XXX 格式（API可能在点号处加下划线）
+        if (c.startsWith('us') && c.length > 4) {
+          keys.push('v_us_' + c.slice(2));
+        }
+        for (const key of keys) {
+          if (window[key] && typeof window[key] === 'string') {
+            const parts = window[key].replace(/^v_\w+="/,'').replace(/"$/,'').split('~');
+            if (parts.length > 3) {
+              result[c] = {
+                name: parts[1] || c,
+                price: parseFloat(parts[3]) || 0,
+                prevClose: parseFloat(parts[4]) || 0,
+                chgPct: parts[32] ? parseFloat(parts[32]) : 0
+              };
+              if (result[c].prevClose && result[c].price) {
+                result[c].chgPct = ((result[c].price - result[c].prevClose) / result[c].prevClose * 100);
+              }
             }
+            delete window[key];
+            break;
           }
-          delete window[key];
         }
       });
       resolve(result);

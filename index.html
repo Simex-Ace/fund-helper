@@ -465,12 +465,16 @@ function generateLiveData() {
   const northFlow = parseFloat(northValStr) || 0;
   DATA.flowSummary.north.dir = northFlow >= 0 ? 'in' : 'out';
 
-  DATA.flowCumulative.north.day = northFlow;
-  DATA.flowCumulative.north.week = northFlow * (3 + Math.random() * 4);
-  DATA.flowCumulative.north.month = northFlow * (10 + Math.random() * 15);
-  DATA.flowCumulative.south.day = northFlow * (0.3 + Math.random() * 0.5);
-  DATA.flowCumulative.south.week = DATA.flowCumulative.south.day * (3 + Math.random() * 4);
-  DATA.flowCumulative.south.month = DATA.flowCumulative.south.day * (8 + Math.random() * 12);
+  // 只有真正有数值时才更新累计数据（避免把"加载中…"覆盖成0）
+  const hasRealFlow = /[\d]/.test(DATA.flowSummary?.north?.value || '');
+  if (hasRealFlow) {
+    DATA.flowCumulative.north.day = northFlow;
+    DATA.flowCumulative.north.week = northFlow * (3 + Math.random() * 4);
+    DATA.flowCumulative.north.month = northFlow * (10 + Math.random() * 15);
+    DATA.flowCumulative.south.day = northFlow * (0.3 + Math.random() * 0.5);
+    DATA.flowCumulative.south.week = DATA.flowCumulative.south.day * (3 + Math.random() * 4);
+    DATA.flowCumulative.south.month = DATA.flowCumulative.south.day * (8 + Math.random() * 12);
+  }
   DATA.flowCumulative.short = {
     ratio: parseFloat((Math.random() * 3 + 0.5).toFixed(2)),
     days: parseFloat((Math.random() * 3 + 1).toFixed(2)),

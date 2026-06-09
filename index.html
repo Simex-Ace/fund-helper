@@ -1627,14 +1627,10 @@ async function fetchLiveFlows() {
 let refreshTimer = null;
 
 function startAutoRefresh() {
-  // 立即拉一次
-  fetchLiveQuotes().then(d => { if (d) { updateLiveQuotes(d); updateLastUpdateTime(); generateLiveData(); } });
-  fetchLiveFlows().then(() => { updateLastUpdateTime(); generateLiveData(); });
-  // 每 30 秒刷新 + 生成新信号
-  refreshTimer = setInterval(() => {
-    fetchLiveQuotes().then(d => { if (d) { updateLiveQuotes(d); updateLastUpdateTime(); generateLiveData(); } });
-    fetchLiveFlows().then(() => { updateLastUpdateTime(); generateLiveData(); });
-  }, 30000);
+  // 首次刷新走完整流程
+  updateNow();
+  // 每 30 秒完整刷新一次
+  refreshTimer = setInterval(updateNow, 30000);
 }
 
 // 页面可见时刷新，不可见时暂停（省电）

@@ -245,7 +245,7 @@ body{font-family:-apple-system,PingFang SC,Helvetica Neue,sans-serif;background:
   <!-- 板块轮动 -->
   <div class="card">
     <div class="card-title">板块轮动 <span class="more" id="sectorToggle">行业 ▾</span></div>
-    <div id="sectorList"><div style="text-align:center;padding:20px;color:var(--text-tertiary);font-size:12px">加载板块数据…</div></div>
+    <div id="sectorList"></div>
   </div>
 
   <!-- 风险雷达 -->
@@ -406,12 +406,24 @@ const DATA = {
     { name:'纳斯达克', code:'usIXIC', price:0, chgPct:0, market:'us' },
     { name:'道琼斯', code:'usDJI', price:0, chgPct:0, market:'us' }
   ],
-  // 板块缓存（实时拉取填充）
-  sectors: [],
-  concepts: [],
-  riskItems: { low:[], mid:[], high:[] },
-  // 主力风向标（由 generateLiveData 填充）
-  flowSummary: { north:{ label:'北向资金', value:'加载中…', dir:'in' }, south:{ label:'南向资金', value:'加载中…', dir:'in' }, short:{ label:'做空比率', value:'--', dir:'mid' } },
+  // 板块缓存（初始有值，API 返回后覆盖）
+  sectors: [
+    { name:'上证指数', chg:-1.70, bar:30 }, { name:'深证成指', chg:-2.15, bar:40 },
+    { name:'创业板指', chg:-2.80, bar:50 }, { name:'恒生指数', chg:-1.33, bar:25 },
+    { name:'标普500', chg:-2.64, bar:45 }, { name:'纳斯达克', chg:-4.18, bar:70 }
+  ],
+  concepts: [
+    { name:'AH股', chg:-1.50, bar:30 }, { name:'大盘股', chg:-1.20, bar:25 },
+    { name:'超大盘', chg:-0.80, bar:20 }, { name:'科技龙头', chg:-2.10, bar:40 },
+    { name:'恒生科技', chg:-2.10, bar:40 }
+  ],
+  riskItems: {
+    low:[{ name:'暂无', type:'', chg:'--' }],
+    mid:[{ name:'暂无下跌板块', type:'', chg:'--' }],
+    high:[{ name:'暂无大跌板块', type:'', chg:'--' }]
+  },
+  // 主力风向标
+  flowSummary: { north:{ label:'北向资金', value:'+0.00亿', dir:'in' }, south:{ label:'南向资金', value:'+0.00亿', dir:'in' }, short:{ label:'做空比率', value:'--', dir:'mid' } },
   flowCumulative: { north:{ day:0, week:0, month:0 }, south:{ day:0, week:0, month:0 }, short:{ ratio:0, days:0, shares:0 } },
   northFlow: [],
   southFlow: [],
